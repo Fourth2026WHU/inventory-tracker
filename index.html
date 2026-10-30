@@ -192,12 +192,17 @@
       </div>
       <div class="card">
         <h2>Try it with sample data</h2>
-        <p class="muted">Fills the app with one year of sample movements so you can see the graphs. This replaces everything currently saved.</p>
+        <p class="muted">Fills the app with one year of sample movements so you can see the graphs. This replaces everything in the database, for everyone.</p>
         <button id="demo-btn" class="btn ghost">Load sample data</button>
+      </div>
+      <div class="card" id="import-card">
+        <h2>Move data from this browser</h2>
+        <p class="muted">This browser still has data from before the database. Moving it replaces everything in the database, for everyone.</p>
+        <button id="import-btn" class="btn ghost">Move data to the database</button>
       </div>
       <div class="card">
         <h2>Clear everything</h2>
-        <p class="muted">Deletes all products and history on this device. Use this before entering real data if you tried the sample data.</p>
+        <p class="muted">Deletes all products and history for everyone. Use this before entering real data if you tried the sample data.</p>
         <button id="clear-btn" class="btn danger">Delete all data</button>
       </div>
     </section>
@@ -247,6 +252,10 @@
 
   <div id="toast"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"
+    integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK"
+    crossorigin="anonymous"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
