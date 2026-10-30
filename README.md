@@ -54,7 +54,7 @@ Both are safe in a public repo. The **secret** key (`sb_secret_...` or `service_
 For each person:
 
 1. Open **Authentication**, then **Users**, then **Add user**, then **Create new user**.
-2. For the email, use the username followed by `@example.com`, for example `owner@example.com`. No email is sent to this address. `example.com` is reserved for examples, so nobody can own it or receive mail there.
+2. For the email, use the username followed by `@inventory.invalid`, for example `owner@inventory.invalid`. No email is sent to this address, and it cannot receive any.
 3. Choose a strong password and turn on **Auto Confirm User**.
 
 Then give the accounts their access in the **SQL Editor**. A login does nothing until it has a row here:
@@ -69,7 +69,7 @@ join (values
   ('dad', 'full'),
   ('staff', 'limited')
 ) as people (username, access)
-on email = people.username || '@example.com';
+on email = people.username || '@inventory.invalid';
 ```
 
 People log in with the username only, for example `owner`.
@@ -98,7 +98,7 @@ Remove someone's access, keeping their login:
 delete from public.profiles where username = 'staff';
 ```
 
-To change a password, open the user in **Authentication**, then **Users**. Users cannot change their own access from the app.
+Users cannot change their own access from the app.
 
 ## Good to know
 

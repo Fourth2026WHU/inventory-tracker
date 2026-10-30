@@ -167,11 +167,13 @@ document.getElementById("login-form").addEventListener("submit", async function 
 
   button.disabled = true;
   loginError.textContent = "";
-  const { error } = await db.auth.signInWithPassword({ email: username + LOGIN_EMAIL_ENDING, password });
+  const email = username.includes("@") ? username : username + LOGIN_EMAIL_ENDING;
+  const { error } = await db.auth.signInWithPassword({ email, password });
   document.getElementById("login-pass").value = "";
 
-  if (error) loginError.textContent = error.status === 400 ? "Wrong username or password." : "Could not reach the server. Try again.";
-  else await startSession();
+  if (!error) await startSession();
+  else if (error.code === "email_not_confirmed") loginError.textContent = "This account is not confirmed yet. Ask the owner to confirm it in Supabase.";
+  else loginError.textContent = error.status === 400 ? "Wrong username or password." : "Could not reach the server. Try again.";
   button.disabled = false;
 });
 

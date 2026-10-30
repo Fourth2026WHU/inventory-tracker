@@ -6,4 +6,4 @@ const SUPABASE_KEY = "sb_publishable_JIb3pGcxffEU65eDdlqmWA_O6GpFTLV";
 
 // Supabase logs in with an email address, so each username becomes username + this ending.
 // No email is ever sent to these addresses.
-const LOGIN_EMAIL_ENDING = "@example.com";
+const LOGIN_EMAIL_ENDING = "@inventory.invalid";
