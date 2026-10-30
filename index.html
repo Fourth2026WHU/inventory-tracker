@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Menu: at the bottom on a phone, on the left on a computer -->
+  <nav id="nav">
+    <div class="brand">📦 Inventory</div>
+    <button data-page="home" class="active"><span class="ico">🏠</span><span>Home</span></button>
+    <button data-page="stock"><span class="ico">📦</span><span>Stock</span></button>
+    <button data-page="record" class="main"><span class="ico">➕</span><span>Record</span></button>
+    <button data-page="insights"><span class="ico">📈</span><span>Insights</span></button>
+    <button data-page="settings"><span class="ico">⚙️</span><span>Settings</span></button>
+  </nav>
+
+  <main>
+
+    <!-- PAGE 1: HOME -->
+    <section id="page-home" class="page active">
+      <p class="muted" id="today-date"></p>
+      <h1>Manage your inventory with ease</h1>
+
+      <div class="stats">
+        <div class="stat"><b id="stat-total">0</b><small>Products</small></div>
+        <div class="stat"><b id="stat-low">0</b><small>Low stock</small></div>
+        <div class="stat"><b id="stat-out">0</b><small>Out of stock</small></div>
+      </div>
+
+      <div class="card">
+        <h2>Today</h2>
+        <div class="today">
+          <div class="box in"><b id="total-in">0</b><small>Stock IN</small></div>
+          <div class="box out"><b id="total-out">0</b><small>Stock OUT</small></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Last 7 days</h2>
+        <div id="home-chart"></div>
+        <div class="legend"><span class="dot in"></span>IN <span class="dot out"></span>OUT</div>
+      </div>
+
+      <div class="card">
+        <h2>Needs attention</h2>
+        <ul id="attention-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Recent activity</h2>
+        <ul id="recent-list"></ul>
+      </div>
+    </section>
+
+    <!-- PAGE 2: STOCK (list, add, edit, delete) -->
+    <section id="page-stock" class="page">
+      <div class="row">
+        <h1>Stock</h1>
+        <button id="add-product-btn" class="btn small">+ Add product</button>
+      </div>
+      <input type="search" id="stock-search" placeholder="Search products">
+      <p class="muted hint">Tap a product to edit, correct its stock, or delete it.</p>
+      <ul id="stock-list" class="card"></ul>
+    </section>
+
+    <!-- PAGE 3: RECORD IN / OUT -->
+    <section id="page-record" class="page">
+      <h1>Record stock IN / OUT</h1>
+      <div class="card">
+        <form id="move-form">
+          <label>Product
+            <select id="move-product" required></select>
+          </label>
+          <div class="seg" id="type-seg">
+            <button type="button" data-type="IN" class="active">IN (received / made)</button>
+            <button type="button" data-type="OUT">OUT (sold / used)</button>
+          </div>
+          <label>Quantity
+            <input type="number" id="move-qty" min="1" step="1" required>
+          </label>
+          <label>Note (customer or supplier, optional)
+            <input type="text" id="move-note">
+          </label>
+          <button type="submit" class="btn">Save</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Today's history</h2>
+        <ul id="record-history"></ul>
+      </div>
+    </section>
+
+    <!-- PAGE 4: INSIGHTS (graphs) -->
+    <section id="page-insights" class="page">
+      <h1>Insights</h1>
+      <div class="seg" id="range-seg">
+        <button type="button" data-range="day">Day</button>
+        <button type="button" data-range="week" class="active">Week</button>
+        <button type="button" data-range="month">Month</button>
+        <button type="button" data-range="year">Year</button>
+      </div>
+      <select id="insight-product"></select>
+
+      <div class="card">
+        <h2 id="chart-title"></h2>
+        <div id="insight-chart"></div>
+        <div class="legend"><span class="dot in"></span>IN <span class="dot out"></span>OUT</div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><b id="ins-in">0</b><small>Total IN</small></div>
+        <div class="stat"><b id="ins-out">0</b><small>Total OUT</small></div>
+        <div class="stat"><b id="ins-net">0</b><small>Net change</small></div>
+      </div>
+      <p class="muted hint" id="ins-hint"></p>
+
+      <div class="card" id="top-card">
+        <h2>Top selling / used</h2>
+        <ul id="top-list"></ul>
+      </div>
+    </section>
+
+    <!-- PAGE 5: SETTINGS -->
+    <section id="page-settings" class="page">
+      <h1>Settings</h1>
+      <div class="card">
+        <h2>Save to Excel</h2>
+        <p class="muted">Downloads a .csv file. Excel opens it directly.</p>
+        <button id="export-stock" class="btn">Download stock list</button>
+        <button id="export-history" class="btn" style="margin-top:10px">Download full history</button>
+      </div>
+      <div class="card">
+        <h2>Try it with sample data</h2>
+        <p class="muted">Fills the app with one year of sample movements so you can see the graphs. This replaces everything currently saved.</p>
+        <button id="demo-btn" class="btn ghost">Load sample data</button>
+      </div>
+      <div class="card">
+        <h2>Clear everything</h2>
+        <p class="muted">Deletes all products and history on this device. Use this before entering real data if you tried the sample data.</p>
+        <button id="clear-btn" class="btn danger">Delete all data</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Pop-up used to add or edit a product -->
+  <dialog id="product-dialog">
+    <form id="product-form">
+      <h2 id="dialog-title">Add product</h2>
+      <label>Name
+        <input type="text" id="p-name" required>
+      </label>
+      <label>Kind
+        <select id="p-kind">
+          <option value="material">Material (we buy it)</option>
+          <option value="product">Finished product (we make or sell it)</option>
+        </select>
+      </label>
+      <label>Unit (pcs, kg, box...)
+        <input type="text" id="p-unit" required>
+      </label>
+      <label><span id="p-stock-label">Starting stock</span>
+        <input type="number" id="p-stock" min="0" step="1" required>
+      </label>
+      <label>Warn me when stock is below
+        <input type="number" id="p-min" min="0" step="1" required>
+      </label>
+      <div class="dialog-buttons">
+        <button type="button" id="p-delete" class="btn danger">Delete</button>
+        <button type="button" id="p-cancel" class="btn ghost">Cancel</button>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

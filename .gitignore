@@ -1,0 +1,7 @@
+# CSV exports can contain real stock data
+*.csv
+
+# System files
+Thumbs.db
+Desktop.ini
+.DS_Store

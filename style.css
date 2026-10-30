@@ -1,0 +1,178 @@
+/* Phone first. On a wide screen the menu moves to the left side. */
+
+:root {
+  --bg: #0f1233;
+  --card: #1a1e4d;
+  --card2: #232863;
+  --line: #2f3578;
+  --text: #eef0ff;
+  --muted: #9aa0d0;
+  --accent: #6c6ff5;
+  --in: #4aa3ff;
+  --out: #ff7a6b;
+  --ok: #3ddc97;
+  --warn: #ffb84d;
+  --bad: #ff6b6b;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main { max-width: 640px; margin: 0 auto; padding: 16px 14px 110px; }
+.page { display: none; }
+.page.active { display: block; }
+
+h1 { font-size: 1.4rem; margin: 4px 0 14px; }
+h2 { font-size: 1.05rem; margin: 0 0 12px; }
+.muted { color: var(--muted); }
+.hint { font-size: 0.85rem; margin: 8px 2px; }
+.row { display: flex; justify-content: space-between; align-items: center; }
+
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+/* Number boxes */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+.stat { background: var(--card); border-radius: 14px; padding: 14px 6px; text-align: center; }
+.stat b { display: block; font-size: 1.5rem; }
+.stat small { color: var(--muted); }
+
+.today { display: flex; gap: 10px; }
+.box { flex: 1; border-radius: 12px; padding: 12px; text-align: center; }
+.box b { display: block; font-size: 2rem; }
+.box.in { background: rgba(74, 163, 255, 0.15); color: var(--in); }
+.box.out { background: rgba(255, 122, 107, 0.15); color: var(--out); }
+
+/* Menu */
+nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+  display: flex; justify-content: space-around;
+  background: #14173f;
+  border-top: 1px solid var(--line);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+}
+nav .brand { display: none; }
+nav button {
+  flex: 1; background: none; border: none; color: var(--muted);
+  font-size: 0.72rem; padding: 6px 2px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+nav button .ico { font-size: 1.3rem; }
+nav button.active { color: #fff; }
+nav button.main .ico {
+  background: var(--accent); border-radius: 50%;
+  width: 46px; height: 46px; margin-top: -20px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(108, 111, 245, 0.5);
+}
+
+/* Forms and buttons */
+label { display: block; margin-bottom: 12px; font-weight: 600; font-size: 0.92rem; }
+input, select {
+  display: block; width: 100%; margin-top: 4px; padding: 12px;
+  font-size: 16px; /* 16px stops phones from zooming in when typing */
+  color: var(--text); background: var(--card2);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+input[type="search"], #insight-product { margin-bottom: 12px; }
+.btn {
+  display: block; width: 100%; padding: 14px;
+  font-size: 1rem; font-weight: bold; color: #fff;
+  background: var(--accent); border: none; border-radius: 10px; cursor: pointer;
+}
+.btn:active { opacity: 0.8; }
+.btn.small { width: auto; padding: 9px 14px; font-size: 0.9rem; }
+.btn.ghost { background: var(--card2); }
+.btn.danger { background: rgba(255, 107, 107, 0.2); color: var(--bad); }
+
+/* IN / OUT and Day / Week / Month / Year switches */
+.seg { display: flex; gap: 4px; background: var(--card2); border-radius: 12px; padding: 4px; margin-bottom: 12px; }
+.seg button {
+  flex: 1; padding: 11px 4px; border: none; border-radius: 9px;
+  background: none; color: var(--muted); font-size: 0.9rem; font-weight: 600; cursor: pointer;
+}
+.seg button.active { background: var(--accent); color: #fff; }
+
+/* Lists */
+ul { list-style: none; margin: 0; padding: 0; }
+li {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 12px 0; border-bottom: 1px solid var(--line);
+}
+li:last-child { border-bottom: none; }
+li.clickable { cursor: pointer; }
+.small { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+.right { text-align: right; }
+.qty { font-weight: bold; font-size: 1.05rem; }
+.ok { color: var(--ok); }
+.low { color: var(--warn); }
+.empty { color: var(--muted); }
+.plus { color: var(--in); font-weight: bold; }
+.minus { color: var(--out); font-weight: bold; }
+.adj { color: var(--warn); font-weight: bold; }
+
+/* Top selling bars */
+.top-item { display: block; }
+.top-item .line { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.bar-bg { height: 8px; background: var(--card2); border-radius: 4px; }
+.bar-fill { height: 8px; background: var(--out); border-radius: 4px; }
+
+/* Charts */
+svg { width: 100%; height: auto; display: block; }
+svg .grid { stroke: var(--line); stroke-width: 1; }
+svg .axis { fill: var(--muted); font-size: 11px; }
+svg .bar-in { fill: var(--in); }
+svg .bar-out { fill: var(--out); }
+.legend { margin-top: 8px; font-size: 0.85rem; color: var(--muted); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 10px; }
+.dot:first-child { margin-left: 0; }
+.dot.in { background: var(--in); }
+.dot.out { background: var(--out); }
+
+/* Pop-up */
+dialog {
+  width: min(92vw, 420px); padding: 18px;
+  background: var(--card); color: var(--text);
+  border: none; border-radius: 16px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
+.dialog-buttons { display: flex; gap: 8px; }
+.dialog-buttons .btn { padding: 12px 8px; }
+
+/* Small message at the bottom */
+#toast {
+  position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%);
+  background: var(--ok); color: #05301c; font-weight: bold;
+  padding: 10px 18px; border-radius: 20px; display: none; z-index: 20;
+}
+#toast.show { display: block; }
+
+/* Computer screens: menu on the left, content wider */
+@media (min-width: 900px) {
+  nav {
+    top: 0; right: auto; bottom: auto; width: 210px; height: 100vh;
+    flex-direction: column; justify-content: flex-start; gap: 6px;
+    border-top: none; border-right: 1px solid var(--line); padding: 20px 12px;
+  }
+  nav .brand { display: block; font-weight: bold; font-size: 1.2rem; padding: 8px 12px 20px; }
+  nav button {
+    flex: none; flex-direction: row; justify-content: flex-start;
+    gap: 12px; font-size: 1rem; padding: 12px; border-radius: 10px;
+  }
+  nav button.active { background: var(--card2); }
+  nav button.main .ico {
+    width: auto; height: auto; margin: 0; background: none; box-shadow: none; border-radius: 0;
+  }
+  main { margin: 0 0 0 210px; max-width: 900px; padding: 28px 32px 40px; }
+  #toast { bottom: 30px; }
+}
