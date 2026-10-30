@@ -157,6 +157,49 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
 }
 #toast.show { display: block; }
 
+/* Login */
+#login-screen { display: none; }
+body.logged-out #login-screen {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 16px;
+}
+body.logged-out nav, body.logged-out main { display: none; }
+#login-form { width: min(100%, 380px); margin: 0; }
+#login-error { min-height: 1.2em; margin: 0 0 10px; font-size: 0.9rem; }
+.userbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 0.9rem; }
+
+/* Hidden from limited accounts */
+body.limited .full-only { display: none; }
+
+/* Record page */
+#page-record .seg { margin-bottom: 14px; }
+.cart-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.cart-row select { flex: 1; min-width: 0; margin-top: 0; }
+.cart-row input { flex: 0 0 84px; width: 84px; margin-top: 0; }
+.cart-remove {
+  flex: 0 0 40px; border: none; border-radius: 10px; cursor: pointer;
+  background: rgba(255, 107, 107, 0.2); color: var(--bad); font-size: 1rem;
+}
+label.last { margin-bottom: 0; }
+#confirm-note { margin: 10px 0 14px; }
+
+/* History page */
+#history-product { margin-bottom: 12px; }
+#history-more { margin-top: 12px; }
+.log { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.log th { padding: 0 6px 8px; text-align: left; color: var(--muted); font-size: 0.78rem; font-weight: 600; }
+.log td { padding: 9px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.log th:first-child, .log td:first-child { padding-left: 0; }
+.log th:last-child, .log td:last-child { padding-right: 0; }
+.log .num { text-align: right; }
+.log td.small { margin: 0; white-space: nowrap; }
+.day-row td { background: var(--card2); padding: 8px 10px !important; font-weight: 600; font-size: 0.85rem; }
+.day-row .line { display: flex; justify-content: space-between; gap: 10px; }
+.badge { display: inline-block; padding: 2px 7px; border-radius: 8px; font-size: 0.74rem; font-weight: bold; }
+.badge.in { background: rgba(74, 163, 255, 0.15); color: var(--in); }
+.badge.out { background: rgba(255, 122, 107, 0.15); color: var(--out); }
+.badge.adjust { background: rgba(255, 184, 77, 0.15); color: var(--warn); }
+
 /* Computer screens: menu on the left, content wider */
 @media (min-width: 900px) {
   nav {

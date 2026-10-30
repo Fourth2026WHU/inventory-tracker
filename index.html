@@ -6,7 +6,23 @@
   <title>Inventory Tracker</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="logged-out">
+
+  <!-- Login: shown until someone logs in -->
+  <section id="login-screen">
+    <form id="login-form" class="card">
+      <h1>📦 Inventory</h1>
+      <p class="muted">Please log in to continue.</p>
+      <label>Username
+        <input type="text" id="login-user" autocomplete="username" autocapitalize="none" required>
+      </label>
+      <label>Password
+        <input type="password" id="login-pass" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="minus"></p>
+      <button type="submit" class="btn">Log in</button>
+    </form>
+  </section>
 
   <!-- Menu: at the bottom on a phone, on the left on a computer -->
   <nav id="nav">
@@ -14,11 +30,17 @@
     <button data-page="home" class="active"><span class="ico">🏠</span><span>Home</span></button>
     <button data-page="stock"><span class="ico">📦</span><span>Stock</span></button>
     <button data-page="record" class="main"><span class="ico">➕</span><span>Record</span></button>
-    <button data-page="insights"><span class="ico">📈</span><span>Insights</span></button>
-    <button data-page="settings"><span class="ico">⚙️</span><span>Settings</span></button>
+    <button data-page="history" class="full-only"><span class="ico">📋</span><span>History</span></button>
+    <button data-page="insights" class="full-only"><span class="ico">📈</span><span>Insights</span></button>
+    <button data-page="settings" class="full-only"><span class="ico">⚙️</span><span>Settings</span></button>
   </nav>
 
   <main>
+
+    <div class="userbar">
+      <span class="muted">Logged in as <b id="user-name"></b></span>
+      <button type="button" id="logout-btn" class="btn small ghost">Log out</button>
+    </div>
 
     <!-- PAGE 1: HOME -->
     <section id="page-home" class="page active">
@@ -39,7 +61,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card full-only">
         <h2>Last 7 days</h2>
         <div id="home-chart"></div>
         <div class="legend"><span class="dot in"></span>IN <span class="dot out"></span>OUT</div>
@@ -50,7 +72,7 @@
         <ul id="attention-list"></ul>
       </div>
 
-      <div class="card">
+      <div class="card full-only">
         <h2>Recent activity</h2>
         <ul id="recent-list"></ul>
       </div>
@@ -60,41 +82,76 @@
     <section id="page-stock" class="page">
       <div class="row">
         <h1>Stock</h1>
-        <button id="add-product-btn" class="btn small">+ Add product</button>
+        <button id="add-product-btn" class="btn small full-only">+ Add product</button>
       </div>
       <input type="search" id="stock-search" placeholder="Search products">
-      <p class="muted hint">Tap a product to edit, correct its stock, or delete it.</p>
+      <p class="muted hint full-only">Tap a product to edit, correct its stock, or delete it.</p>
       <ul id="stock-list" class="card"></ul>
     </section>
 
     <!-- PAGE 3: RECORD IN / OUT -->
     <section id="page-record" class="page">
       <h1>Record stock IN / OUT</h1>
-      <div class="card">
-        <form id="move-form">
-          <label>Product
-            <select id="move-product" required></select>
-          </label>
-          <div class="seg" id="type-seg">
-            <button type="button" data-type="IN" class="active">IN (received / made)</button>
-            <button type="button" data-type="OUT">OUT (sold / used)</button>
-          </div>
-          <label>Quantity
-            <input type="number" id="move-qty" min="1" step="1" required>
-          </label>
-          <label>Note (customer or supplier, optional)
+      <div class="seg" id="type-seg">
+        <button type="button" data-type="IN" class="active">IN (received / made)</button>
+        <button type="button" data-type="OUT">OUT (sold / used)</button>
+      </div>
+      <form id="move-form">
+        <div class="card">
+          <h2>Products</h2>
+          <div id="cart-rows"></div>
+          <button type="button" id="add-line-btn" class="btn ghost">+ Add another product</button>
+        </div>
+        <div class="card">
+          <label class="last">Note (customer or supplier, optional)
             <input type="text" id="move-note">
           </label>
-          <button type="submit" class="btn">Save</button>
-        </form>
+        </div>
+        <button type="submit" class="btn">Save</button>
+      </form>
+    </section>
+
+    <!-- PAGE 4: HISTORY (graph and log table) -->
+    <section id="page-history" class="page">
+      <h1>History</h1>
+      <div class="seg" id="history-range">
+        <button type="button" data-range="day">Day</button>
+        <button type="button" data-range="week" class="active">Week</button>
+        <button type="button" data-range="month">Month</button>
+        <button type="button" data-range="year">Year</button>
       </div>
+      <div class="seg" id="history-type">
+        <button type="button" data-type="ALL" class="active">All</button>
+        <button type="button" data-type="IN">IN</button>
+        <button type="button" data-type="OUT">OUT</button>
+      </div>
+      <select id="history-product"></select>
+
       <div class="card">
-        <h2>Today's history</h2>
-        <ul id="record-history"></ul>
+        <h2 id="history-title"></h2>
+        <div id="history-chart"></div>
+        <div class="legend"><span class="dot in"></span>IN <span class="dot out"></span>OUT</div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><b id="hist-in">0</b><small>Total IN</small></div>
+        <div class="stat"><b id="hist-out">0</b><small>Total OUT</small></div>
+        <div class="stat"><b id="hist-count">0</b><small>Records</small></div>
+      </div>
+
+      <div class="card">
+        <h2>Log</h2>
+        <table class="log">
+          <thead>
+            <tr><th>Time</th><th>Product</th><th>Type</th><th class="num">Qty</th><th class="num">Left</th></tr>
+          </thead>
+          <tbody id="history-rows"></tbody>
+        </table>
+        <button type="button" id="history-more" class="btn ghost">Show more</button>
       </div>
     </section>
 
-    <!-- PAGE 4: INSIGHTS (graphs) -->
+    <!-- PAGE 5: INSIGHTS (graphs) -->
     <section id="page-insights" class="page">
       <h1>Insights</h1>
       <div class="seg" id="range-seg">
@@ -124,7 +181,7 @@
       </div>
     </section>
 
-    <!-- PAGE 5: SETTINGS -->
+    <!-- PAGE 6: SETTINGS -->
     <section id="page-settings" class="page">
       <h1>Settings</h1>
       <div class="card">
@@ -135,12 +192,17 @@
       </div>
       <div class="card">
         <h2>Try it with sample data</h2>
-        <p class="muted">Fills the app with one year of sample movements so you can see the graphs. This replaces everything currently saved.</p>
+        <p class="muted">Fills the app with one year of sample movements so you can see the graphs. This replaces everything in the database, for everyone.</p>
         <button id="demo-btn" class="btn ghost">Load sample data</button>
+      </div>
+      <div class="card" id="import-card">
+        <h2>Move data from this browser</h2>
+        <p class="muted">This browser still has data from before the database. Moving it replaces everything in the database, for everyone.</p>
+        <button id="import-btn" class="btn ghost">Move data to the database</button>
       </div>
       <div class="card">
         <h2>Clear everything</h2>
-        <p class="muted">Deletes all products and history on this device. Use this before entering real data if you tried the sample data.</p>
+        <p class="muted">Deletes all products and history for everyone. Use this before entering real data if you tried the sample data.</p>
         <button id="clear-btn" class="btn danger">Delete all data</button>
       </div>
     </section>
@@ -177,8 +239,23 @@
     </form>
   </dialog>
 
+  <!-- Pop-up that asks the user to check a record before it is saved -->
+  <dialog id="confirm-dialog">
+    <h2 id="confirm-title"></h2>
+    <ul id="confirm-list"></ul>
+    <p class="muted" id="confirm-note"></p>
+    <div class="dialog-buttons">
+      <button type="button" id="confirm-back" class="btn ghost">Back</button>
+      <button type="button" id="confirm-save" class="btn">Confirm</button>
+    </div>
+  </dialog>
+
   <div id="toast"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"
+    integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK"
+    crossorigin="anonymous"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
