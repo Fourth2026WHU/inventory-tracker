@@ -248,6 +248,11 @@ label.last { margin-bottom: 0; }
 .badge.in { background: rgba(18, 128, 74, 0.12); color: var(--in); }
 .badge.out { background: rgba(214, 32, 58, 0.1); color: var(--out); }
 .badge.adjust, .badge.low { background: rgba(163, 95, 0, 0.12); color: var(--warn); }
+.badge.undo { background: var(--card2); color: var(--muted); }
+.log tr.clickable { cursor: pointer; }
+.log tr.clickable:active { background: var(--card2); }
+.log tr.undone td { color: var(--muted); }
+.log tr.undone td:nth-child(2) > div:first-child, .log tr.undone td.num { text-decoration: line-through; }
 
 /* Computer screens: menu on the left, content wider */
 @media (min-width: 900px) {

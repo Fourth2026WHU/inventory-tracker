@@ -123,6 +123,12 @@ const THAI = {
   "Show more": "ดูเพิ่มเติม",
   "Fix": "ปรับสต็อก",
   "Nothing recorded in this period.": "ไม่มีรายการในช่วงนี้",
+  "Tap a record to undo it.": "แตะรายการที่บันทึกผิดเพื่อยกเลิก",
+  "Undo": "ยกเลิก",
+  "Undone": "ยกเลิกแล้ว",
+  "Record undone": "ยกเลิกรายการแล้ว",
+  "Undid the record from {date} {time}": "ยกเลิกรายการของ {date} {time}",
+  "Undo this record of {name}? Stock changes from {before} to {after} {unit}.": "ยกเลิกรายการ {name} ใช่ไหม? สต็อกจะเปลี่ยนจาก {before} เป็น {after} {unit}",
 
   // Insights
   "Today, hour by hour": "วันนี้ รายชั่วโมง",
@@ -195,6 +201,9 @@ const THAI = {
   "Price cannot be below zero.": "ราคาต้องไม่ติดลบ",
   "A product in this record was deleted. Please check and try again.": "มีสินค้าในรายการนี้ถูกลบแล้ว กรุณาตรวจสอบแล้วลองใหม่",
   "This product was deleted on another device.": "สินค้านี้ถูกลบจากอุปกรณ์อื่นแล้ว",
+  "This record was not found.": "ไม่พบรายการนี้",
+  "This record cannot be undone.": "ยกเลิกรายการนี้ไม่ได้",
+  "This record was already undone.": "รายการนี้ถูกยกเลิกไปแล้ว",
   "Order soon must be the same as or more than Order now.": "ค่าควรสั่งเร็ว ๆ นี้ต้องไม่น้อยกว่าค่าสั่งซื้อเลย"
 };
 
