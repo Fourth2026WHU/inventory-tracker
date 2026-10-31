@@ -23,11 +23,19 @@ const FULL_ONLY_PAGES = ["history", "insights", "settings"];
 const PAGE_SIZE = 1000;       // the most rows Supabase sends in one reply
 const CHECK_EVERY_MS = 60000; // how often an open app looks for changes from other devices
 const PICKER_MAX_ROWS = 50;   // how many products the Record list shows at once
+const LIST_MAX_ROWS = 8;      // how many rows each Insights list shows
+const SPEED_DAYS = 30;        // selling speed is worked out from this many recent days
 const RANGE_TITLES = { day: "Today, hour by hour", week: "Last 7 days", month: "Last 30 days", year: "Last 12 months" };
+const RANGE_DAYS = { day: 1, week: 7, month: 30, year: 365 };
+const COMPARE_LABELS = { day: "yesterday", week: "the 7 days before", month: "the 30 days before", year: "the year before" };
 
 let currentUser = null;     // the account that is logged in
 let recordType = "IN";      // which button is selected on the Record page
-let cart = [{ productId: null, qty: "" }]; // the product lines on the Record page
+let recordContact = "";     // the customer or supplier typed on the Record page
+let cart = [newCartLine()]; // the product lines on the Record page
+let contacts = [];          // the customer and supplier names to choose from
+let reorder = { now: 14, soon: 21 }; // reorder warning levels, in days of stock left
+let notMovingDays = 30;     // which button is selected in the Not moving list
 let currentRange = "week";  // which button is selected on the Insights page
 let historyRange = "week";  // which buttons are selected on the History page
 let historyType = "ALL";
@@ -41,27 +49,52 @@ async function fetchAllMovements() {
   const all = [];
   while (true) {
     const { data, error } = await db.from("movements")
-      .select("id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after")
+      .select("id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact")
       .order("id")
       .range(all.length, all.length + PAGE_SIZE - 1);
     if (error) throw error;
     all.push(...data);
-    if (data.length < PAGE_SIZE) return all;
+    if (data.length < PAGE_SIZE) return addProfit(all);
   }
+}
+
+// Work out the sales and profit of each OUT. The cost is the average of
+// everything paid for that product up to that day.
+function addProfit(list) {
+  const paid = {};
+  for (const m of list) {
+    const p = paid[m.productId] || (paid[m.productId] = { qty: 0, cost: 0 });
+    if (m.type === "IN" && m.unitCost !== null) {
+      p.qty += m.qty;
+      p.cost += m.qty * m.unitCost;
+    }
+    if (m.type === "OUT" && m.unitPrice !== null) {
+      m.sales = m.qty * m.unitPrice;
+      if (p.qty > 0) m.profit = m.sales - m.qty * (p.cost / p.qty);
+    }
+  }
+  return list;
 }
 
 // Get the latest data from the server
 async function loadData() {
-  const [items, totals] = await Promise.all([
+  const [items, totals, names] = await Promise.all([
     db.from("products").select("id,name,kind,unit,stock,min:min_stock").order("id"),
-    db.rpc("today_totals")
+    db.rpc("today_totals"),
+    db.from("contacts").select("kind,name").order("name")
   ]);
   if (items.error) throw items.error;
   if (totals.error) throw totals.error;
+  if (names.error) throw names.error;
   products = items.data;
   todayTotals = totals.data;
+  contacts = names.data;
 
   if (isFull()) {
+    const { data: levels, error: levelsError } = await db.from("app_settings").select("order_now_days,order_soon_days").maybeSingle();
+    if (levelsError) throw levelsError;
+    if (levels) reorder = { now: levels.order_now_days, soon: levels.order_soon_days };
+
     // History is never edited, so the same number of rows means nothing changed
     const { count, error } = await db.from("movements").select("id", { count: "exact", head: true });
     if (error) throw error;
@@ -108,6 +141,15 @@ function el(tag, cls, text) {
 }
 
 function findProduct(id) { return products.find(p => p.id === id); }
+
+// A number as text, with commas and at most 2 decimals: 1,250.5
+function money(n) { return Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 }); }
+
+// The date a number of days ago, as text
+function dateBack(days) {
+  const d = new Date();
+  return dateStr(new Date(d.getFullYear(), d.getMonth(), d.getDate() - days));
+}
 
 function toast(message) {
   const t = document.getElementById("toast");
@@ -179,11 +221,12 @@ document.getElementById("login-form").addEventListener("submit", async function 
 });
 
 document.getElementById("logout-btn").addEventListener("click", function () {
-  db.auth.signOut({ scope: "local" });
+  if (confirm("Log out?")) db.auth.signOut({ scope: "local" });
 });
 
 function showPage(name) {
   if (!isFull() && FULL_ONLY_PAGES.includes(name)) name = "home";
+  document.body.classList.toggle("wide", name === "insights");
   document.querySelectorAll(".page").forEach(p => p.classList.toggle("active", p.id === "page-" + name));
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.page === name));
   window.scrollTo(0, 0);
@@ -198,6 +241,7 @@ function render() {
   if (isFull()) {
     renderInsights();
     renderHistory();
+    if (!document.getElementById("reorder-form").contains(document.activeElement)) showReorderSettings();
   }
 }
 
@@ -250,7 +294,7 @@ function makeMoveRow(m) {
   const li = el("li");
   const left = el("div");
   left.appendChild(el("div", "", m.productName));
-  const info = [m.date, m.time, m.note].filter(Boolean).join(" · ");
+  const info = [m.date, m.time, m.contact, m.note].filter(Boolean).join(" · ");
   left.appendChild(el("div", "small", info));
 
   const d = deltaOf(m);
@@ -349,71 +393,68 @@ document.getElementById("p-delete").addEventListener("click", async function () 
 // 5. RECORD PAGE
 // =====================================================
 
-// A box to type a product name in, with a list of matching products under it
-function makeProductPicker(line) {
+function newCartLine() { return { productId: null, qty: "", price: "" }; }
+
+// A box to type in, with a list of matching names under it.
+// With "free" any text is allowed, otherwise something must be chosen from the list.
+function makePicker({ label, placeholder, startText, items, detail, free, onType, onChoose }) {
   const box = el("div", "picker");
   const input = el("input");
   const menu = el("ul", "picker-menu");
-  const chosen = findProduct(line.productId);
   let matches = [];
-  let active = -1; // the row picked with the arrow keys
+  let filtering = false; // false shows the whole list, true shows only what matches the text
+  let active = -1;       // the row picked with the arrow keys
 
   input.type = "text";
-  input.required = true;
   input.autocomplete = "off";
-  input.placeholder = products.length ? "Type or choose" : "No products yet (add one in Stock)";
-  input.setAttribute("aria-label", "Product");
-  input.value = chosen ? chosen.name : "";
+  input.placeholder = placeholder;
+  input.setAttribute("aria-label", label);
+  input.value = startText;
   menu.hidden = true;
-
-  // The form cannot be saved until a real product is chosen
-  function checkChosen() {
-    input.setCustomValidity(line.productId === null ? "Choose a product from the list" : "");
-  }
 
   function closeMenu() {
     menu.hidden = true;
     active = -1;
   }
 
-  function choose(product) {
-    line.productId = product.id;
-    input.value = product.name;
-    checkChosen();
+  function choose(item) {
+    input.value = item.name;
+    filtering = false;
+    onChoose(item, input);
     closeMenu();
   }
 
   function fillMenu() {
-    const chosenNow = findProduct(line.productId);
-    const typed = chosenNow && chosenNow.name === input.value ? "" : input.value.trim().toLowerCase();
-    const found = products.filter(p => p.name.toLowerCase().includes(typed));
+    const typed = filtering ? input.value.trim().toLowerCase() : "";
+    const found = items.filter(item => item.name.toLowerCase().includes(typed));
     matches = found.slice(0, PICKER_MAX_ROWS);
 
     menu.innerHTML = "";
-    if (found.length === 0) menu.appendChild(el("li", "empty", "No product matches."));
-    matches.forEach((p, i) => {
+    if (found.length === 0) {
+      if (free) return closeMenu();
+      menu.appendChild(el("li", "empty", "No product matches."));
+    }
+    matches.forEach((item, i) => {
       const li = el("li", i === active ? "active" : "");
-      li.appendChild(el("span", "", p.name));
-      li.appendChild(el("span", "small", p.stock + " " + p.unit + " left"));
+      li.appendChild(el("span", "", item.name));
+      if (detail) li.appendChild(el("span", "small", detail(item)));
       li.addEventListener("mousedown", event => event.preventDefault()); // keeps the box focused
-      li.addEventListener("click", () => choose(p));
+      li.addEventListener("click", () => choose(item));
       menu.appendChild(li);
     });
-    if (found.length > matches.length) menu.appendChild(el("li", "empty", "Keep typing to see more products."));
+    if (found.length > matches.length) menu.appendChild(el("li", "empty", "Keep typing to see more."));
     menu.hidden = false;
     const row = menu.children[active];
     if (row) row.scrollIntoView({ block: "nearest" });
   }
 
-  input.addEventListener("focus", () => { input.select(); fillMenu(); });
+  input.addEventListener("focus", () => { filtering = false; input.select(); fillMenu(); });
   input.addEventListener("click", fillMenu);
   input.addEventListener("blur", closeMenu);
   input.addEventListener("input", () => {
-    const typed = input.value.trim().toLowerCase();
-    const exact = products.find(p => p.name.toLowerCase() === typed);
-    line.productId = exact ? exact.id : null;
-    checkChosen();
+    filtering = true;
     active = -1;
+    onType(input.value, input);
     fillMenu();
   });
   input.addEventListener("keydown", event => {
@@ -423,24 +464,72 @@ function makeProductPicker(line) {
       active = Math.max(0, Math.min(matches.length - 1, active + step));
       fillMenu();
     } else if (event.key === "Enter" && !menu.hidden) {
-      event.preventDefault(); // Enter picks a product here, it does not save the form
-      const pick = matches[Math.max(active, 0)];
+      event.preventDefault(); // Enter picks from the list here, it does not save the form
+      const pick = matches[free ? active : Math.max(active, 0)];
       if (pick) choose(pick);
+      else closeMenu();
     } else if (event.key === "Escape") {
       closeMenu();
     }
   });
 
-  checkChosen();
   box.appendChild(input);
   box.appendChild(menu);
   return box;
+}
+
+function makeProductPicker(line) {
+  // The form cannot be saved until a real product is chosen
+  function checkChosen(input) {
+    input.setCustomValidity(line.productId === null ? "Choose a product from the list" : "");
+  }
+
+  const chosen = findProduct(line.productId);
+  const box = makePicker({
+    label: "Product",
+    placeholder: products.length ? "Type or choose a product" : "No products yet (add one in Stock)",
+    startText: chosen ? chosen.name : "",
+    items: products,
+    detail: p => p.stock + " " + p.unit + " left",
+    onType(text, input) {
+      const exact = products.find(p => p.name.toLowerCase() === text.trim().toLowerCase());
+      line.productId = exact ? exact.id : null;
+      checkChosen(input);
+    },
+    onChoose(p, input) {
+      line.productId = p.id;
+      checkChosen(input);
+    }
+  });
+
+  const input = box.querySelector("input");
+  input.required = true;
+  checkChosen(input);
+  return box;
+}
+
+// The optional customer (OUT) or supplier (IN) box. New names are saved with the record.
+function renderContactBox() {
+  const kind = recordType === "OUT" ? "customer" : "supplier";
+  document.getElementById("contact-label").textContent = (kind === "customer" ? "Customer" : "Supplier") + " (optional)";
+  const box = document.getElementById("contact-box");
+  box.innerHTML = "";
+  box.appendChild(makePicker({
+    label: kind === "customer" ? "Customer" : "Supplier",
+    placeholder: "Type or choose a name",
+    startText: recordContact,
+    items: contacts.filter(c => c.kind === kind),
+    free: true,
+    onType(text) { recordContact = text; },
+    onChoose(c) { recordContact = c.name; }
+  }));
 }
 
 // One row per product. Typed values live in "cart", so redrawing never loses them.
 function renderRecord() {
   const box = document.getElementById("cart-rows");
   box.innerHTML = "";
+  renderContactBox();
 
   cart.forEach((line, i) => {
     if (!findProduct(line.productId)) line.productId = null;
@@ -456,8 +545,18 @@ function renderRecord() {
     qty.value = line.qty;
     qty.addEventListener("input", () => { line.qty = qty.value; });
 
+    const price = el("input");
+    price.type = "number";
+    price.min = "0";
+    price.step = "any";
+    price.placeholder = recordType === "OUT" ? "Price each" : "Cost each";
+    price.setAttribute("aria-label", price.placeholder + " (optional)");
+    price.value = line.price;
+    price.addEventListener("input", () => { line.price = price.value; });
+
     row.appendChild(makeProductPicker(line));
     row.appendChild(qty);
+    row.appendChild(price);
 
     if (cart.length > 1) {
       const remove = el("button", "cart-remove", "✕");
@@ -470,27 +569,35 @@ function renderRecord() {
   });
 }
 
-// The cart as one line per product (the same product chosen twice is added together)
+// The cart as one line per product and price (the same product chosen twice is added together)
 function cartLines() {
   const lines = [];
   for (const c of cart) {
     const product = findProduct(c.productId);
-    const same = lines.find(l => l.product === product);
+    const price = c.price === "" ? null : Number(c.price);
+    const same = lines.find(l => l.product === product && l.price === price);
     if (same) same.qty += Number(c.qty);
-    else lines.push({ product: product, qty: Number(c.qty) });
+    else lines.push({ product: product, qty: Number(c.qty), price: price });
   }
   return lines;
+}
+
+// How much of a product the whole cart moves, across all its lines
+function cartQty(lines, product) {
+  return lines.filter(l => l.product === product).reduce((sum, l) => sum + l.qty, 0);
 }
 
 document.querySelectorAll("#type-seg button").forEach(b => {
   b.addEventListener("click", () => {
     recordType = b.dataset.type;
+    recordContact = "";
     document.querySelectorAll("#type-seg button").forEach(x => x.classList.toggle("active", x === b));
+    renderRecord();
   });
 });
 
 document.getElementById("add-line-btn").addEventListener("click", () => {
-  cart.push({ productId: null, qty: "" });
+  cart.push(newCartLine());
   renderRecord();
 });
 
@@ -506,7 +613,7 @@ document.getElementById("move-form").addEventListener("submit", function (event)
   }
 
   if (recordType === "OUT") {
-    const short = lines.find(l => l.qty > l.product.stock);
+    const short = lines.find(l => cartQty(lines, l.product) > l.product.stock);
     if (short) {
       alert("Not enough " + short.product.name + ". Only " + short.product.stock + " " + short.product.unit + " left.");
       return;
@@ -515,20 +622,29 @@ document.getElementById("move-form").addEventListener("submit", function (event)
 
   const list = document.getElementById("confirm-list");
   list.innerHTML = "";
-  for (const { product, qty } of lines) {
-    const after = product.stock + (recordType === "IN" ? qty : -qty);
+  for (const { product, qty, price } of lines) {
+    const moved = cartQty(lines, product);
+    const after = product.stock + (recordType === "IN" ? moved : -moved);
     const li = el("li");
     const left = el("div");
     left.appendChild(el("div", "", product.name));
     left.appendChild(el("div", "small", "Stock " + product.stock + " → " + after + " " + product.unit));
+    if (price !== null) left.appendChild(el("div", "small", qty + " × " + money(price) + " = " + money(qty * price)));
     li.appendChild(left);
     li.appendChild(el("div", recordType === "IN" ? "plus" : "minus", (recordType === "IN" ? "+" : "-") + qty));
     list.appendChild(li);
   }
 
+  const contact = recordContact.trim();
   const note = document.getElementById("move-note").value.trim();
+  const total = lines.reduce((sum, l) => sum + l.qty * (l.price || 0), 0);
+  const details = [
+    total ? "Total: " + money(total) : "",
+    contact ? (recordType === "OUT" ? "Customer: " : "Supplier: ") + contact : "",
+    note ? "Note: " + note : ""
+  ];
   document.getElementById("confirm-title").textContent = "Confirm stock " + recordType;
-  document.getElementById("confirm-note").textContent = note ? "Note: " + note : "";
+  document.getElementById("confirm-note").textContent = details.filter(Boolean).join(" · ");
   confirmLines = lines;
   document.getElementById("confirm-dialog").showModal();
 });
@@ -541,13 +657,15 @@ document.getElementById("confirm-save").addEventListener("click", async function
   const count = confirmLines.length;
   const saved = await saveToServer("record_cart", {
     p_type: recordType,
-    p_lines: confirmLines.map(l => ({ product_id: l.product.id, qty: l.qty })),
-    p_note: document.getElementById("move-note").value.trim()
+    p_lines: confirmLines.map(l => ({ product_id: l.product.id, qty: l.qty, price: l.price })),
+    p_note: document.getElementById("move-note").value.trim(),
+    p_contact: recordContact.trim()
   }, "Saved " + count + (count === 1 ? " product" : " products"));
 
   document.getElementById("confirm-dialog").close();
   if (!saved) return;
-  cart = [{ productId: null, qty: "" }];
+  cart = [newCartLine()];
+  recordContact = "";
   document.getElementById("move-note").value = "";
   renderRecord();
 });
@@ -583,7 +701,7 @@ function buildBuckets(range) {
   const index = {};
   function add(key, label) {
     index[key] = buckets.length;
-    buckets.push({ key: key, label: label, in: 0, out: 0 });
+    buckets.push({ key: key, label: label, in: 0, out: 0, sales: 0, profit: 0 });
   }
 
   if (range === "day") {
@@ -616,7 +734,7 @@ function bucketKey(range, m) {
 // Add up all movements into the boxes
 function summarize(range, productId) {
   const { buckets, index } = buildBuckets(range);
-  const perProduct = {};
+  const perProduct = {}, perProfit = {}, perCustomer = {};
   let totalIn = 0, totalOut = 0;
 
   for (const m of movements) {
@@ -629,39 +747,134 @@ function summarize(range, productId) {
     if (m.type === "IN") { b.in += m.qty; totalIn += m.qty; }
     else {
       b.out += m.qty; totalOut += m.qty;
+      b.sales += m.sales || 0;
+      b.profit += m.profit || 0;
       perProduct[m.productName] = (perProduct[m.productName] || 0) + m.qty;
+      if (m.profit !== undefined) perProfit[m.productName] = (perProfit[m.productName] || 0) + m.profit;
+      if (m.contact) {
+        const c = perCustomer[m.contact] || (perCustomer[m.contact] = { sales: 0, units: 0, orders: 0 });
+        c.sales += m.sales || 0;
+        c.units += m.qty;
+        c.orders++;
+      }
     }
   }
-  return { buckets, totalIn, totalOut, perProduct };
+  return { buckets, totalIn, totalOut, perProduct, perProfit, perCustomer };
+}
+
+// Add up one period. periodsBack 0 is the current period, 1 is the one before it.
+function periodTotals(range, productId, periodsBack) {
+  const days = RANGE_DAYS[range];
+  const to = dateBack(days * periodsBack);
+  const from = dateBack(days * periodsBack + days - 1);
+  const totals = { units: 0, sales: 0, profit: 0, missing: 0 };
+
+  for (const m of movements) {
+    if (m.type !== "OUT" || m.date < from || m.date > to) continue;
+    if (productId && m.productId !== productId) continue;
+    totals.units += m.qty;
+    totals.sales += m.sales || 0;
+    totals.profit += m.profit || 0;
+    // Materials are used, not sold, so they have no selling price
+    const product = findProduct(m.productId);
+    if (m.profit === undefined && !(product && product.kind === "material")) totals.missing++;
+  }
+  return totals;
+}
+
+// Text such as "▲ 12% from yesterday"
+function showChange(id, now, before) {
+  const box = document.getElementById(id);
+  box.className = "change";
+  box.textContent = "";
+  if (before <= 0) return;
+  const percent = Math.round((now - before) / before * 100);
+  box.classList.add(percent >= 0 ? "ok" : "minus");
+  box.textContent = (percent >= 0 ? "▲ " : "▼ ") + Math.abs(percent) + "% from " + COMPARE_LABELS[currentRange];
+}
+
+// Products that will run out soon at their recent selling speed, soonest first
+function reorderList() {
+  const from = dateBack(SPEED_DAYS - 1);
+  const sold = {};
+  for (const m of movements) {
+    if (m.type === "OUT" && m.date >= from) sold[m.productId] = (sold[m.productId] || 0) + m.qty;
+  }
+  return products
+    .filter(p => sold[p.id])
+    .map(p => ({ product: p, days: Math.floor(Math.max(p.stock, 0) / (sold[p.id] / SPEED_DAYS)) }))
+    .filter(r => r.days <= reorder.soon)
+    .sort((a, b) => a.days - b.days);
+}
+
+// Products with stock that have not gone OUT lately, longest first
+function notMovingList() {
+  const lastOut = {};
+  for (const m of movements) {
+    if (m.type === "OUT") lastOut[m.productId] = m.date; // movements are oldest first
+  }
+  const from = dateBack(notMovingDays - 1);
+  return products
+    .filter(p => p.stock > 0 && !(lastOut[p.id] >= from))
+    .map(p => ({ product: p, last: lastOut[p.id] || "" }))
+    .sort((a, b) => a.last.localeCompare(b.last));
+}
+
+// Fill one Insights list. Each row is [left text, small text, right text, right class].
+function fillList(id, rows, emptyText) {
+  const list = document.getElementById(id);
+  list.innerHTML = "";
+  if (rows.length === 0) list.appendChild(el("li", "empty", emptyText));
+  for (const [name, small, right, rightClass] of rows.slice(0, LIST_MAX_ROWS)) {
+    const li = el("li");
+    const left = el("div");
+    left.appendChild(el("div", "", name));
+    if (small) left.appendChild(el("div", "small", small));
+    li.appendChild(left);
+    li.appendChild(el("div", "right " + (rightClass || ""), right));
+    list.appendChild(li);
+  }
+  if (rows.length > LIST_MAX_ROWS) list.appendChild(el("li", "empty", "And " + (rows.length - LIST_MAX_ROWS) + " more."));
 }
 
 function renderInsights() {
   const productId = Number(document.getElementById("insight-product").value) || null;
+  const now = periodTotals(currentRange, productId, 0);
+  const before = periodTotals(currentRange, productId, 1);
+  const toOrder = reorderList();
+  const notMoving = notMovingList();
+
+  // Numbers across the top
+  document.getElementById("ins-profit").textContent = money(now.profit);
+  document.getElementById("ins-units").textContent = money(now.units);
+  document.getElementById("ins-order").textContent = toOrder.length;
+  document.getElementById("ins-still").textContent = notMoving.length;
+  showChange("ins-profit-change", now.profit, before.profit);
+  showChange("ins-units-change", now.units, before.units);
+
+  document.getElementById("ins-hint").textContent = now.missing
+    ? now.missing + " sale" + (now.missing === 1 ? " is" : "s are") + " not counted in profit because a selling price or cost is missing."
+    : "";
+
+  // Graph
   const s = summarize(currentRange, productId);
+  document.getElementById("chart-title").textContent = "Sales and profit: " + RANGE_TITLES[currentRange].toLowerCase();
+  drawChart(document.getElementById("insight-chart"), s.buckets.map(b => ({ key: b.key, label: b.label, in: b.sales, out: b.profit })), {
+    first: "Sales", second: "Profit", firstClass: "bar-sales", secondClass: "bar-profit"
+  });
 
-  document.getElementById("chart-title").textContent = RANGE_TITLES[currentRange];
-  drawChart(document.getElementById("insight-chart"), s.buckets);
-
-  document.getElementById("ins-in").textContent = s.totalIn;
-  document.getElementById("ins-out").textContent = s.totalOut;
-  const net = s.totalIn - s.totalOut;
-  document.getElementById("ins-net").textContent = (net > 0 ? "+" : "") + net;
-  document.getElementById("ins-hint").textContent = productId
-    ? ""
-    : "Different units (kg, pcs...) are added together here. Choose one product above for exact numbers.";
-
-  // Top list (only when "All products" is selected)
-  const topCard = document.getElementById("top-card");
-  topCard.style.display = productId ? "none" : "block";
+  // Top selling and most profitable compare products, so they need "All products"
+  document.getElementById("top-card").style.display = productId ? "none" : "block";
+  document.getElementById("profit-card").style.display = productId ? "none" : "block";
+  const top = Object.entries(s.perProduct).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const list = document.getElementById("top-list");
   list.innerHTML = "";
-  const top = Object.entries(s.perProduct).sort((a, b) => b[1] - a[1]).slice(0, 5);
   if (top.length === 0) list.appendChild(el("li", "empty", "No OUT movements in this period."));
   for (const [name, value] of top) {
     const li = el("li", "top-item");
     const line = el("div", "line");
     line.appendChild(el("span", "", name));
-    line.appendChild(el("b", "", String(value)));
+    line.appendChild(el("b", "", money(value)));
     const bg = el("div", "bar-bg");
     const fill = el("div", "bar-fill");
     fill.style.width = (value / top[0][1] * 100) + "%";
@@ -670,6 +883,31 @@ function renderInsights() {
     li.appendChild(bg);
     list.appendChild(li);
   }
+
+  fillList("reorder-list", toOrder.map(r => [
+    r.product.name,
+    r.product.stock + " " + r.product.unit + " left",
+    r.days <= reorder.now ? "Order now · " + r.days + " days" : "Order soon · " + r.days + " days",
+    r.days <= reorder.now ? "minus" : "low"
+  ]), "Nothing needs ordering yet.");
+
+  fillList("still-list", notMoving.map(r => [
+    r.product.name,
+    r.product.stock + " " + r.product.unit + " in stock",
+    r.last ? "Last OUT " + r.last : "Never sold",
+    "small"
+  ]), "Everything in stock has moved recently.");
+
+  fillList("customer-list", Object.entries(s.perCustomer).sort((a, b) => b[1].sales - a[1].sales || b[1].units - a[1].units).map(([name, c]) => [
+    name,
+    money(c.units) + " units · " + c.orders + (c.orders === 1 ? " record" : " records"),
+    money(c.sales),
+    "qty"
+  ]), "No customers recorded in this period.");
+
+  fillList("profit-list", Object.entries(s.perProfit).sort((a, b) => b[1] - a[1]).map(([name, value]) => [
+    name, "", money(value), value >= 0 ? "ok qty" : "minus qty"
+  ]), "No profit worked out in this period yet.");
 }
 
 document.querySelectorAll("#range-seg button").forEach(b => {
@@ -680,6 +918,13 @@ document.querySelectorAll("#range-seg button").forEach(b => {
   });
 });
 document.getElementById("insight-product").addEventListener("change", renderInsights);
+document.querySelectorAll("#still-seg button").forEach(b => {
+  b.addEventListener("click", () => {
+    notMovingDays = Number(b.dataset.days);
+    document.querySelectorAll("#still-seg button").forEach(x => x.classList.toggle("active", x === b));
+    renderInsights();
+  });
+});
 
 // ---------- drawing the graph (plain SVG, no extra libraries needed) ----------
 
@@ -690,7 +935,9 @@ function niceStep(raw) {
   return f * mag;
 }
 
-function drawChart(container, buckets) {
+// Two bars for each box. "names" changes what they are called, IN and OUT unless given.
+function drawChart(container, buckets, names) {
+  const { first, second, firstClass, secondClass } = names || { first: "IN", second: "OUT", firstClass: "bar-in", secondClass: "bar-out" };
   const W = 600, H = 260, L = 38, R = 8, T = 10, B = 28;
   const pw = W - L - R, ph = H - T - B;
 
@@ -714,10 +961,10 @@ function drawChart(container, buckets) {
   const bw = Math.max(2, Math.min(18, gw * 0.36));
   buckets.forEach((b, i) => {
     const gx = L + i * gw + gw / 2;
-    const hIn = b.in / top * ph;
-    const hOut = b.out / top * ph;
-    s += '<rect class="bar-in" x="' + (gx - bw - 1) + '" y="' + (T + ph - hIn) + '" width="' + bw + '" height="' + hIn + '" rx="2"><title>' + b.key + " IN: " + b.in + "</title></rect>";
-    s += '<rect class="bar-out" x="' + (gx + 1) + '" y="' + (T + ph - hOut) + '" width="' + bw + '" height="' + hOut + '" rx="2"><title>' + b.key + " OUT: " + b.out + "</title></rect>";
+    const hIn = Math.max(b.in, 0) / top * ph;
+    const hOut = Math.max(b.out, 0) / top * ph;
+    s += '<rect class="' + firstClass + '" x="' + (gx - bw - 1) + '" y="' + (T + ph - hIn) + '" width="' + bw + '" height="' + hIn + '" rx="2"><title>' + b.key + " " + first + ": " + money(b.in) + "</title></rect>";
+    s += '<rect class="' + secondClass + '" x="' + (gx + 1) + '" y="' + (T + ph - hOut) + '" width="' + bw + '" height="' + hOut + '" rx="2"><title>' + b.key + " " + second + ": " + money(b.out) + "</title></rect>";
     if (b.label) s += '<text class="axis" x="' + gx + '" y="' + (H - 8) + '" text-anchor="middle">' + b.label + "</text>";
   });
 
@@ -740,15 +987,6 @@ function renderHistory() {
     if (productId && m.productId !== productId) return false;
     return historyType === "ALL" || m.type === historyType;
   }).reverse();
-
-  // Graph
-  const buckets = summarize(historyRange, productId).buckets.map(b => ({
-    key: b.key, label: b.label,
-    in: historyType === "OUT" ? 0 : b.in,
-    out: historyType === "IN" ? 0 : b.out
-  }));
-  document.getElementById("history-title").textContent = RANGE_TITLES[historyRange];
-  drawChart(document.getElementById("history-chart"), buckets);
 
   // Totals: for the whole period and for each day
   const days = {};
@@ -798,7 +1036,9 @@ function renderHistory() {
     tr.appendChild(el("td", "small", m.time || ""));
     const name = el("td");
     name.appendChild(el("div", "", m.productName));
-    if (m.note) name.appendChild(el("div", "small", m.note));
+    const price = m.unitPrice !== null ? m.unitPrice : m.unitCost;
+    const info = [m.contact, price === null ? "" : "@ " + money(price), m.note].filter(Boolean).join(" · ");
+    if (info) name.appendChild(el("div", "small", info));
     tr.appendChild(name);
     tr.appendChild(el("td", "", "")).appendChild(el("span", "badge " + m.type.toLowerCase(), labels[m.type] || m.type));
     tr.appendChild(el("td", "num " + (m.type === "ADJUST" ? "adj" : (d >= 0 ? "plus" : "minus")), (d > 0 ? "+" : "") + d));
@@ -863,8 +1103,8 @@ document.getElementById("export-stock").addEventListener("click", () => {
 
 document.getElementById("export-history").addEventListener("click", () => {
   const labels = { IN: "IN", OUT: "OUT", ADJUST: "Correction" };
-  const rows = [["Date", "Time", "Product", "Type", "Quantity", "Change", "Stock after", "Note"]];
-  for (const m of movements) rows.push([m.date, m.time, m.productName, labels[m.type] || m.type, m.qty, deltaOf(m), m.stockAfter, m.note]);
+  const rows = [["Date", "Time", "Product", "Type", "Quantity", "Change", "Stock after", "Customer or supplier", "Selling price", "Cost", "Note"]];
+  for (const m of movements) rows.push([m.date, m.time, m.productName, labels[m.type] || m.type, m.qty, deltaOf(m), m.stockAfter, m.contact, m.unitPrice, m.unitCost, m.note]);
   downloadCSV("history-" + todayString() + ".csv", rows);
 });
 
@@ -878,6 +1118,21 @@ document.getElementById("clear-btn").addEventListener("click", () => {
   if (saving) return;
   if (!confirm("Delete ALL products and history for EVERYONE? This cannot be undone.")) return;
   replaceAll([], [], "All data deleted");
+});
+
+// The reorder warning levels on the Insights page
+function showReorderSettings() {
+  document.getElementById("order-now").value = reorder.now;
+  document.getElementById("order-soon").value = reorder.soon;
+}
+
+document.getElementById("reorder-form").addEventListener("submit", function (event) {
+  event.preventDefault();
+  if (saving) return;
+  saveToServer("save_settings", {
+    p_order_now: Number(document.getElementById("order-now").value),
+    p_order_soon: Number(document.getElementById("order-soon").value)
+  }, "Saved");
 });
 
 // Data from before the database, still saved in this browser
@@ -911,15 +1166,19 @@ document.getElementById("demo-btn").addEventListener("click", () => {
   if (!confirm("This replaces everything in the database with sample data, for everyone. Continue?")) return;
 
   const demo = [
-    { name: "Material A", kind: "material", unit: "kg", min: 30, base: 8 },
-    { name: "Material B", kind: "material", unit: "kg", min: 30, base: 6 },
-    { name: "Packaging box", kind: "material", unit: "pcs", min: 100, base: 20 },
-    { name: "Product X", kind: "product", unit: "pcs", min: 20, base: 10 },
-    { name: "Product Y", kind: "product", unit: "pcs", min: 20, base: 7 },
-    { name: "Product Z", kind: "product", unit: "pcs", min: 15, base: 4 }
+    { name: "Material A", kind: "material", unit: "kg", min: 30, base: 8, cost: 40 },
+    { name: "Material B", kind: "material", unit: "kg", min: 30, base: 6, cost: 55 },
+    { name: "Packaging box", kind: "material", unit: "pcs", min: 100, base: 20, cost: 3 },
+    { name: "Product X", kind: "product", unit: "pcs", min: 20, base: 10, cost: 60, price: 95 },
+    { name: "Product Y", kind: "product", unit: "pcs", min: 20, base: 7, cost: 90, price: 150 },
+    { name: "Product Z", kind: "product", unit: "pcs", min: 15, base: 4, cost: 150, price: 240 }
   ];
   const sample = demo.map((d, i) => ({ id: i + 1, name: d.name, kind: d.kind, unit: d.unit, stock: 0, min: d.min }));
   const sampleMoves = [];
+  const customers = ["Lin Trading", "Golden Shop", "Mr. Chen", "Happy Market", ""];
+  const suppliers = ["Bright Supply", "East Factory"];
+  const pick = list => list[Math.floor(Math.random() * list.length)];
+  const vary = n => Math.round(n * (0.9 + Math.random() * 0.2)); // prices move a little each time
 
   const today = new Date();
   for (let back = 364; back >= 0; back--) {
@@ -934,7 +1193,10 @@ document.getElementById("demo-btn").addEventListener("click", () => {
           p.stock += type === "IN" ? qty : -qty;
           dayMoves.push({
             date: dateStr(day), productId: p.id, productName: p.name, type: type, qty: qty,
-            delta: type === "IN" ? qty : -qty, note: "", stockAfter: p.stock
+            delta: type === "IN" ? qty : -qty, note: "", stockAfter: p.stock,
+            unitCost: type === "IN" ? vary(demo[i].cost) : null,
+            unitPrice: type === "OUT" && demo[i].price ? vary(demo[i].price) : null,
+            contact: type === "IN" ? pick(suppliers) : (demo[i].price ? pick(customers) : "")
           });
         };
         if (p.stock < want) make("IN", want * (4 + Math.floor(Math.random() * 4)));
