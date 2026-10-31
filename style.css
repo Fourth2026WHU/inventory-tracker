@@ -175,14 +175,30 @@ body.logged-out nav, body.logged-out main { display: none; }
 #login-error { min-height: 1.2em; margin: 0 0 10px; font-size: 0.9rem; }
 .userbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 0.9rem; }
 
+.userbar-buttons { display: flex; gap: 8px; flex: none; }
+
 /* Hidden from limited accounts */
 body.limited .full-only { display: none; }
+/* Limited accounts have 3 menu buttons: keep Record in the middle */
+body.limited nav button[data-page="stock"] { order: 1; }
 
 /* Record page */
 #page-record .seg { margin-bottom: 14px; }
 .cart-row { display: flex; gap: 8px; margin-bottom: 10px; }
-.cart-row select { flex: 1; min-width: 0; margin-top: 0; }
-.cart-row input { flex: 0 0 84px; width: 84px; margin-top: 0; }
+.cart-row > input { flex: 0 0 84px; width: 84px; margin-top: 0; }
+.picker { flex: 1; min-width: 0; position: relative; }
+.picker input { margin-top: 0; }
+.picker-menu {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 5; margin-top: 4px;
+  max-height: 40vh; overflow-y: auto; background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+}
+.picker-menu[hidden] { display: none; }
+.picker-menu li { padding: 11px 12px; cursor: pointer; }
+.picker-menu li.empty { cursor: default; }
+.picker-menu li .small { margin-top: 0; white-space: nowrap; }
+.picker-menu li:hover, .picker-menu li.active { background: var(--card2); }
+.picker-menu li.empty:hover { background: none; }
 .cart-remove {
   flex: 0 0 40px; border: none; border-radius: 10px; cursor: pointer;
   background: rgba(214, 32, 58, 0.1); color: var(--bad); font-size: 1rem;
@@ -221,6 +237,7 @@ label.last { margin-bottom: 0; }
   }
   nav button.active { background: var(--card2); }
   nav button.main .ico > span { filter: none; }
+  body.limited nav button[data-page="stock"] { order: 0; }
   nav button.main .ico {
     width: auto; height: auto; margin: 0; background: none; box-shadow: none; border-radius: 0;
   }
