@@ -9,7 +9,6 @@ const THAI = {
   "History": "ประวัติ",
   "Insights": "วิเคราะห์",
   "Settings": "ตั้งค่า",
-  "📦 Inventory": "📦 คลังสินค้า",
   "Please log in to continue.": "กรุณาเข้าสู่ระบบเพื่อใช้งาน",
   "Username": "ชื่อผู้ใช้",
   "Password": "รหัสผ่าน",
