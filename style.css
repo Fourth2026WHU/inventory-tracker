@@ -7,7 +7,7 @@
   --card2: #eef1fd;
   --line: #e2e6f7;
   --text: #1c2140;
-  --muted: #646b8a;
+  --muted: #4f5675;
   --accent: linear-gradient(135deg, #4a5ff0, #6a55ec);
   --accent-text: #4a5ff0;
   --shadow: 0 6px 20px rgba(60, 70, 160, 0.08);
@@ -22,7 +22,7 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", "Leelawadee UI", "Noto Sans Thai", "Microsoft YaHei", sans-serif;
   background: linear-gradient(160deg, #f6f7fe, #e6e9fa) fixed;
   background-color: var(--bg);
   color: var(--text);
@@ -95,6 +95,7 @@ input, select {
   color: var(--text); background: var(--card2);
   border: 1px solid var(--line); border-radius: 10px;
 }
+input::placeholder { color: var(--muted); opacity: 1; }
 input[type="search"], #insight-product { margin-bottom: 12px; }
 .btn {
   display: block; width: 100%; padding: 14px;
@@ -181,9 +182,10 @@ body.logged-out #login-screen {
 body.logged-out nav, body.logged-out main { display: none; }
 #login-form { width: min(100%, 380px); margin: 0; }
 #login-error { min-height: 1.2em; margin: 0 0 10px; font-size: 0.9rem; }
-.userbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 0.9rem; }
+.userbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 0.9rem; }
 
-.userbar-buttons { display: flex; gap: 8px; flex: none; }
+.userbar-buttons { display: flex; gap: 6px; flex: none; }
+.userbar-buttons .btn.small { padding: 9px 10px; font-size: 0.82rem; }
 .icon-btn { background: var(--accent); }
 .icon-btn > span { filter: grayscale(1) brightness(10); }
 

@@ -106,9 +106,9 @@ async function loadData() {
 async function saveToServer(name, args, message) {
   saving = true;
   const { error } = await db.rpc(name, args);
-  if (error) alert("Not saved. " + error.message);
+  if (error) alert(t("Not saved. {reason}", { reason: serverText(error.message) }));
   try { await loadData(); }
-  catch (e) { toast("Could not refresh the data"); }
+  catch (e) { toast(t("Could not refresh the data")); }
   saving = false;
   render();
   if (!error) toast(message);
@@ -145,6 +145,11 @@ function findProduct(id) { return products.find(p => p.id === id); }
 // A number as text, with commas and at most 2 decimals: 1,250.5
 function money(n) { return Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 }); }
 
+// A date for people to read: Sat Oct 31 2026
+function longDate(d) {
+  return d.toLocaleDateString(dateLocale(), { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+}
+
 // The date a number of days ago, as text
 function dateBack(days) {
   const d = new Date();
@@ -173,7 +178,7 @@ async function startSession() {
     if (error) throw error;
     if (!profile) {
       await db.auth.signOut({ scope: "local" });
-      loginError.textContent = "This account has no access yet. Ask the owner to set it up.";
+      loginError.textContent = t("This account has no access yet. Ask the owner to set it up.");
       return;
     }
     currentUser = profile;
@@ -181,14 +186,18 @@ async function startSession() {
   } catch (e) {
     currentUser = null;
     await db.auth.signOut({ scope: "local" });
-    loginError.textContent = "Could not reach the database. Try again in a minute.";
+    loginError.textContent = t("Could not reach the database. Try again in a minute.");
     return;
   }
 
   document.body.classList.remove("logged-out");
   document.body.classList.toggle("limited", !isFull());
-  document.getElementById("user-name").textContent = currentUser.name + (isFull() ? "" : " (limited)");
+  showUserName();
   showPage("home");
+}
+
+function showUserName() {
+  document.getElementById("user-name").textContent = isFull() ? currentUser.name : t("{name} (limited)", { name: currentUser.name });
 }
 
 function endSession() {
@@ -215,13 +224,13 @@ document.getElementById("login-form").addEventListener("submit", async function 
   document.getElementById("login-pass").value = "";
 
   if (!error) await startSession();
-  else if (error.code === "email_not_confirmed") loginError.textContent = "This account is not confirmed yet. Ask the owner to confirm it in Supabase.";
-  else loginError.textContent = error.status === 400 ? "Wrong username or password." : "Could not reach the server. Try again.";
+  else if (error.code === "email_not_confirmed") loginError.textContent = t("This account is not confirmed yet. Ask the owner to confirm it in Supabase.");
+  else loginError.textContent = error.status === 400 ? t("Wrong username or password.") : t("Could not reach the server. Try again.");
   button.disabled = false;
 });
 
 document.getElementById("logout-btn").addEventListener("click", function () {
-  if (confirm("Log out?")) db.auth.signOut({ scope: "local" });
+  if (confirm(t("Log out?"))) db.auth.signOut({ scope: "local" });
 });
 
 function showPage(name) {
@@ -250,7 +259,7 @@ function render() {
 // =====================================================
 
 function renderHome() {
-  document.getElementById("today-date").textContent = new Date().toDateString();
+  document.getElementById("today-date").textContent = longDate(new Date());
 
   const low = products.filter(p => p.stock > 0 && p.stock < p.min).length;
   const out = products.filter(p => p.stock <= 0).length;
@@ -270,13 +279,13 @@ function renderHome() {
   list.innerHTML = "";
   const needs = products.filter(p => p.stock < p.min);
   if (needs.length === 0) {
-    list.appendChild(el("li", "empty", products.length ? "All products have enough stock." : "No products yet. Go to Stock and add one."));
+    list.appendChild(el("li", "empty", products.length ? t("All products have enough stock.") : t("No products yet. Go to Stock and add one.")));
   }
   for (const p of needs) {
     const li = el("li");
     li.appendChild(el("div", "", p.name));
     const right = el("div", "qty " + (p.stock <= 0 ? "minus" : "low"));
-    right.textContent = (p.stock <= 0 ? "Out of stock" : "Low: " + p.stock + " " + p.unit);
+    right.textContent = (p.stock <= 0 ? t("Out of stock") : t("Low: {n} {unit}", { n: p.stock, unit: p.unit }));
     li.appendChild(right);
     list.appendChild(li);
   }
@@ -285,7 +294,7 @@ function renderHome() {
   const recent = document.getElementById("recent-list");
   recent.innerHTML = "";
   if (!isFull()) return;
-  if (movements.length === 0) recent.appendChild(el("li", "empty", "Nothing recorded yet."));
+  if (movements.length === 0) recent.appendChild(el("li", "empty", t("Nothing recorded yet.")));
   for (const m of movements.slice(-8).reverse()) recent.appendChild(makeMoveRow(m));
 }
 
@@ -317,7 +326,7 @@ function renderStock() {
   const shown = products.filter(p => p.name.toLowerCase().includes(search));
 
   if (shown.length === 0) {
-    list.appendChild(el("li", "empty", products.length ? "No product matches your search." : "No products yet. Tap + Add product."));
+    list.appendChild(el("li", "empty", products.length ? t("No product matches your search.") : t("No products yet. Tap + Add product.")));
     return;
   }
 
@@ -326,13 +335,13 @@ function renderStock() {
 
     const left = el("div");
     left.appendChild(el("div", "", p.name));
-    left.appendChild(el("div", "small", (p.kind === "material" ? "Material" : "Finished product") + " · warn below " + p.min));
+    left.appendChild(el("div", "small", t("{kind} · warn below {min}", { kind: t(p.kind === "material" ? "Material" : "Finished product"), min: p.min })));
 
     const right = el("div", "right");
     right.appendChild(el("div", "qty", p.stock + " " + p.unit));
-    if (p.stock <= 0) right.appendChild(el("div", "small minus", "Out of stock"));
-    else if (p.stock < p.min) right.appendChild(el("div", "small low", "Low stock"));
-    else right.appendChild(el("div", "small ok", "OK"));
+    if (p.stock <= 0) right.appendChild(el("div", "small minus", t("Out of stock")));
+    else if (p.stock < p.min) right.appendChild(el("div", "small low", t("Low stock")));
+    else right.appendChild(el("div", "small ok", t("OK")));
 
     li.appendChild(left);
     li.appendChild(right);
@@ -345,15 +354,15 @@ function openProductDialog(id) {
   editingId = id;
   const p = id === null ? null : findProduct(id);
 
-  document.getElementById("dialog-title").textContent = p ? "Edit product" : "Add product";
+  document.getElementById("dialog-title").textContent = p ? t("Edit product") : t("Add product");
   document.getElementById("p-name").value = p ? p.name : "";
   document.getElementById("p-kind").value = p ? p.kind : "material";
   document.getElementById("p-unit").value = p ? p.unit : "pcs";
   document.getElementById("p-stock").value = p ? p.stock : 0;
   document.getElementById("p-min").value = p ? p.min : 5;
   document.getElementById("p-stock-label").textContent = p
-    ? "Stock now (change it only to fix a mistake)"
-    : "Starting stock";
+    ? t("Stock now (change it only to fix a mistake)")
+    : t("Starting stock");
   document.getElementById("p-delete").style.display = p ? "block" : "none";
 
   document.getElementById("product-dialog").showModal();
@@ -376,7 +385,7 @@ document.getElementById("product-form").addEventListener("submit", async functio
     p_unit: document.getElementById("p-unit").value.trim(),
     p_stock: Number(document.getElementById("p-stock").value),
     p_min: Number(document.getElementById("p-min").value)
-  }, "Saved");
+  }, t("Saved"));
   if (saved) document.getElementById("product-dialog").close();
 });
 
@@ -384,8 +393,8 @@ document.getElementById("product-form").addEventListener("submit", async functio
 document.getElementById("p-delete").addEventListener("click", async function () {
   const p = findProduct(editingId);
   if (!p || saving) return;
-  if (!confirm('Delete "' + p.name + '" for everyone? Its past history stays in the records.')) return;
-  const saved = await saveToServer("delete_product", { p_id: p.id }, "Deleted");
+  if (!confirm(t('Delete "{name}" for everyone? Its past history stays in the records.', { name: p.name }))) return;
+  const saved = await saveToServer("delete_product", { p_id: p.id }, t("Deleted"));
   if (saved) document.getElementById("product-dialog").close();
 });
 
@@ -432,7 +441,7 @@ function makePicker({ label, placeholder, startText, items, detail, free, onType
     menu.innerHTML = "";
     if (found.length === 0) {
       if (free) return closeMenu();
-      menu.appendChild(el("li", "empty", "No product matches."));
+      menu.appendChild(el("li", "empty", t("No product matches.")));
     }
     matches.forEach((item, i) => {
       const li = el("li", i === active ? "active" : "");
@@ -442,7 +451,7 @@ function makePicker({ label, placeholder, startText, items, detail, free, onType
       li.addEventListener("click", () => choose(item));
       menu.appendChild(li);
     });
-    if (found.length > matches.length) menu.appendChild(el("li", "empty", "Keep typing to see more."));
+    if (found.length > matches.length) menu.appendChild(el("li", "empty", t("Keep typing to see more.")));
     menu.hidden = false;
     const row = menu.children[active];
     if (row) row.scrollIntoView({ block: "nearest" });
@@ -481,16 +490,16 @@ function makePicker({ label, placeholder, startText, items, detail, free, onType
 function makeProductPicker(line) {
   // The form cannot be saved until a real product is chosen
   function checkChosen(input) {
-    input.setCustomValidity(line.productId === null ? "Choose a product from the list" : "");
+    input.setCustomValidity(line.productId === null ? t("Choose a product from the list") : "");
   }
 
   const chosen = findProduct(line.productId);
   const box = makePicker({
-    label: "Product",
-    placeholder: products.length ? "Type or choose a product" : "No products yet (add one in Stock)",
+    label: t("Product"),
+    placeholder: products.length ? t("Type or choose a product") : t("No products yet (add one in Stock)"),
     startText: chosen ? chosen.name : "",
     items: products,
-    detail: p => p.stock + " " + p.unit + " left",
+    detail: p => t("{n} {unit} left", { n: p.stock, unit: p.unit }),
     onType(text, input) {
       const exact = products.find(p => p.name.toLowerCase() === text.trim().toLowerCase());
       line.productId = exact ? exact.id : null;
@@ -511,12 +520,12 @@ function makeProductPicker(line) {
 // The optional customer (OUT) or supplier (IN) box. New names are saved with the record.
 function renderContactBox() {
   const kind = recordType === "OUT" ? "customer" : "supplier";
-  document.getElementById("contact-label").textContent = (kind === "customer" ? "Customer" : "Supplier") + " (optional)";
+  document.getElementById("contact-label").textContent = t(kind === "customer" ? "Customer (optional)" : "Supplier (optional)");
   const box = document.getElementById("contact-box");
   box.innerHTML = "";
   box.appendChild(makePicker({
-    label: kind === "customer" ? "Customer" : "Supplier",
-    placeholder: "Type or choose a name",
+    label: t(kind === "customer" ? "Customer" : "Supplier"),
+    placeholder: t("Type or choose a name"),
     startText: recordContact,
     items: contacts.filter(c => c.kind === kind),
     free: true,
@@ -540,8 +549,8 @@ function renderRecord() {
     qty.min = "1";
     qty.step = "1";
     qty.required = true;
-    qty.placeholder = "Qty";
-    qty.setAttribute("aria-label", "Quantity");
+    qty.placeholder = t("Qty");
+    qty.setAttribute("aria-label", t("Quantity"));
     qty.value = line.qty;
     qty.addEventListener("input", () => { line.qty = qty.value; });
 
@@ -549,8 +558,8 @@ function renderRecord() {
     price.type = "number";
     price.min = "0";
     price.step = "any";
-    price.placeholder = recordType === "OUT" ? "Price each" : "Cost each";
-    price.setAttribute("aria-label", price.placeholder + " (optional)");
+    price.placeholder = t(recordType === "OUT" ? "Price each" : "Cost each");
+    price.setAttribute("aria-label", price.placeholder);
     price.value = line.price;
     price.addEventListener("input", () => { line.price = price.value; });
 
@@ -561,7 +570,7 @@ function renderRecord() {
     if (cart.length > 1) {
       const remove = el("button", "cart-remove", "✕");
       remove.type = "button";
-      remove.setAttribute("aria-label", "Remove this product");
+      remove.setAttribute("aria-label", t("Remove this product"));
       remove.addEventListener("click", () => { cart.splice(i, 1); renderRecord(); });
       row.appendChild(remove);
     }
@@ -608,14 +617,14 @@ document.getElementById("move-form").addEventListener("submit", function (event)
 
   if (lines.some(l => !l.product)) {
     renderRecord();
-    alert("A product was deleted on another device. Please check the list.");
+    alert(t("A product was deleted on another device. Please check the list."));
     return;
   }
 
   if (recordType === "OUT") {
     const short = lines.find(l => cartQty(lines, l.product) > l.product.stock);
     if (short) {
-      alert("Not enough " + short.product.name + ". Only " + short.product.stock + " " + short.product.unit + " left.");
+      alert(t("Not enough {name}. Only {n} {unit} left.", { name: short.product.name, n: short.product.stock, unit: short.product.unit }));
       return;
     }
   }
@@ -628,7 +637,7 @@ document.getElementById("move-form").addEventListener("submit", function (event)
     const li = el("li");
     const left = el("div");
     left.appendChild(el("div", "", product.name));
-    left.appendChild(el("div", "small", "Stock " + product.stock + " → " + after + " " + product.unit));
+    left.appendChild(el("div", "small", t("Stock {before} → {after} {unit}", { before: product.stock, after: after, unit: product.unit })));
     if (price !== null) left.appendChild(el("div", "small", qty + " × " + money(price) + " = " + money(qty * price)));
     li.appendChild(left);
     li.appendChild(el("div", recordType === "IN" ? "plus" : "minus", (recordType === "IN" ? "+" : "-") + qty));
@@ -639,11 +648,11 @@ document.getElementById("move-form").addEventListener("submit", function (event)
   const note = document.getElementById("move-note").value.trim();
   const total = lines.reduce((sum, l) => sum + l.qty * (l.price || 0), 0);
   const details = [
-    total ? "Total: " + money(total) : "",
-    contact ? (recordType === "OUT" ? "Customer: " : "Supplier: ") + contact : "",
-    note ? "Note: " + note : ""
+    total ? t("Total: {n}", { n: money(total) }) : "",
+    contact ? t(recordType === "OUT" ? "Customer: {name}" : "Supplier: {name}", { name: contact }) : "",
+    note ? t("Note: {text}", { text: note }) : ""
   ];
-  document.getElementById("confirm-title").textContent = "Confirm stock " + recordType;
+  document.getElementById("confirm-title").textContent = t("Confirm stock {type}", { type: t(recordType) });
   document.getElementById("confirm-note").textContent = details.filter(Boolean).join(" · ");
   confirmLines = lines;
   document.getElementById("confirm-dialog").showModal();
@@ -660,7 +669,7 @@ document.getElementById("confirm-save").addEventListener("click", async function
     p_lines: confirmLines.map(l => ({ product_id: l.product.id, qty: l.qty, price: l.price })),
     p_note: document.getElementById("move-note").value.trim(),
     p_contact: recordContact.trim()
-  }, "Saved " + count + (count === 1 ? " product" : " products"));
+  }, count === 1 ? t("Saved 1 product") : t("Saved {n} products", { n: count }));
 
   document.getElementById("confirm-dialog").close();
   if (!saved) return;
@@ -679,7 +688,7 @@ function renderDropdowns() {
 function fillSelect(select) {
   const previous = select.value;
   select.innerHTML = "";
-  const all = el("option", "", "All products");
+  const all = el("option", "", t("All products"));
   all.value = "";
   select.appendChild(all);
   for (const p of products) {
@@ -711,14 +720,14 @@ function buildBuckets(range) {
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
       const label = range === "week"
-        ? d.toLocaleDateString("en-US", { weekday: "short" })
+        ? d.toLocaleDateString(dateLocale(), { weekday: "short" })
         : (i % 5 === 0 ? String(d.getDate()) : "");
       add(dateStr(d), label);
     }
   } else {
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      add(d.getFullYear() + "-" + pad(d.getMonth() + 1), d.toLocaleDateString("en-US", { month: "short" }));
+      add(d.getFullYear() + "-" + pad(d.getMonth() + 1), d.toLocaleDateString(dateLocale(), { month: "short" }));
     }
   }
   return { buckets, index };
@@ -790,7 +799,7 @@ function showChange(id, now, before) {
   if (before <= 0) return;
   const percent = Math.round((now - before) / before * 100);
   box.classList.add(percent >= 0 ? "ok" : "minus");
-  box.textContent = (percent >= 0 ? "▲ " : "▼ ") + Math.abs(percent) + "% from " + COMPARE_LABELS[currentRange];
+  box.textContent = (percent >= 0 ? "▲ " : "▼ ") + t("{percent}% from {period}", { percent: Math.abs(percent), period: t(COMPARE_LABELS[currentRange]) });
 }
 
 // Products that will run out soon at their recent selling speed, soonest first
@@ -834,7 +843,7 @@ function fillList(id, rows, emptyText) {
     li.appendChild(el("div", "right " + (rightClass || ""), right));
     list.appendChild(li);
   }
-  if (rows.length > LIST_MAX_ROWS) list.appendChild(el("li", "empty", "And " + (rows.length - LIST_MAX_ROWS) + " more."));
+  if (rows.length > LIST_MAX_ROWS) list.appendChild(el("li", "empty", t("And {n} more.", { n: rows.length - LIST_MAX_ROWS })));
 }
 
 function renderInsights() {
@@ -853,14 +862,14 @@ function renderInsights() {
   showChange("ins-units-change", now.units, before.units);
 
   document.getElementById("ins-hint").textContent = now.missing
-    ? now.missing + " sale" + (now.missing === 1 ? " is" : "s are") + " not counted in profit because a selling price or cost is missing."
+    ? (now.missing === 1 ? t("1 sale is not counted in profit because a selling price or cost is missing.") : t("{n} sales are not counted in profit because a selling price or cost is missing.", { n: now.missing }))
     : "";
 
   // Graph
   const s = summarize(currentRange, productId);
-  document.getElementById("chart-title").textContent = "Sales and profit: " + RANGE_TITLES[currentRange].toLowerCase();
+  document.getElementById("chart-title").textContent = t("Sales and profit: {period}", { period: t(RANGE_TITLES[currentRange]).toLowerCase() });
   drawChart(document.getElementById("insight-chart"), s.buckets.map(b => ({ key: b.key, label: b.label, in: b.sales, out: b.profit })), {
-    first: "Sales", second: "Profit", firstClass: "bar-sales", secondClass: "bar-profit"
+    first: t("Sales"), second: t("Profit"), firstClass: "bar-sales", secondClass: "bar-profit"
   });
 
   // Top selling and most profitable compare products, so they need "All products"
@@ -869,7 +878,7 @@ function renderInsights() {
   const top = Object.entries(s.perProduct).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const list = document.getElementById("top-list");
   list.innerHTML = "";
-  if (top.length === 0) list.appendChild(el("li", "empty", "No OUT movements in this period."));
+  if (top.length === 0) list.appendChild(el("li", "empty", t("No OUT movements in this period.")));
   for (const [name, value] of top) {
     const li = el("li", "top-item");
     const line = el("div", "line");
@@ -886,28 +895,28 @@ function renderInsights() {
 
   fillList("reorder-list", toOrder.map(r => [
     r.product.name,
-    r.product.stock + " " + r.product.unit + " left",
-    r.days <= reorder.now ? "Order now · " + r.days + " days" : "Order soon · " + r.days + " days",
+    t("{n} {unit} left", { n: r.product.stock, unit: r.product.unit }),
+    t(r.days <= reorder.now ? "Order now · {n} days" : "Order soon · {n} days", { n: r.days }),
     r.days <= reorder.now ? "minus" : "low"
-  ]), "Nothing needs ordering yet.");
+  ]), t("Nothing needs ordering yet."));
 
   fillList("still-list", notMoving.map(r => [
     r.product.name,
-    r.product.stock + " " + r.product.unit + " in stock",
-    r.last ? "Last OUT " + r.last : "Never sold",
+    t("{n} {unit} in stock", { n: r.product.stock, unit: r.product.unit }),
+    r.last ? t("Last OUT {date}", { date: new Date(r.last + "T00:00").toLocaleDateString(dateLocale(), { dateStyle: "medium" }) }) : t("Never sold"),
     "small"
-  ]), "Everything in stock has moved recently.");
+  ]), t("Everything in stock has moved recently."));
 
   fillList("customer-list", Object.entries(s.perCustomer).sort((a, b) => b[1].sales - a[1].sales || b[1].units - a[1].units).map(([name, c]) => [
     name,
-    money(c.units) + " units · " + c.orders + (c.orders === 1 ? " record" : " records"),
+    t(c.orders === 1 ? "{units} units · 1 record" : "{units} units · {n} records", { units: money(c.units), n: c.orders }),
     money(c.sales),
     "qty"
-  ]), "No customers recorded in this period.");
+  ]), t("No customers recorded in this period."));
 
   fillList("profit-list", Object.entries(s.perProfit).sort((a, b) => b[1] - a[1]).map(([name, value]) => [
     name, "", money(value), value >= 0 ? "ok qty" : "minus qty"
-  ]), "No profit worked out in this period yet.");
+  ]), t("No profit worked out in this period yet."));
 }
 
 document.querySelectorAll("#range-seg button").forEach(b => {
@@ -937,7 +946,7 @@ function niceStep(raw) {
 
 // Two bars for each box. "names" changes what they are called, IN and OUT unless given.
 function drawChart(container, buckets, names) {
-  const { first, second, firstClass, secondClass } = names || { first: "IN", second: "OUT", firstClass: "bar-in", secondClass: "bar-out" };
+  const { first, second, firstClass, secondClass } = names || { first: t("IN"), second: t("OUT"), firstClass: "bar-in", secondClass: "bar-out" };
   const W = 600, H = 260, L = 38, R = 8, T = 10, B = 28;
   const pw = W - L - R, ph = H - T - B;
 
@@ -1005,13 +1014,13 @@ function renderHistory() {
   body.innerHTML = "";
   if (rows.length === 0) {
     const tr = el("tr");
-    const td = el("td", "empty", "Nothing recorded in this period.");
+    const td = el("td", "empty", t("Nothing recorded in this period."));
     td.colSpan = 5;
     tr.appendChild(td);
     body.appendChild(tr);
   }
 
-  const labels = { IN: "IN", OUT: "OUT", ADJUST: "Fix" };
+  const labels = { IN: t("IN"), OUT: t("OUT"), ADJUST: t("Fix") };
   let lastDate = null;
   for (const m of rows.slice(0, historyLimit)) {
     if (m.date !== lastDate) {
@@ -1020,7 +1029,7 @@ function renderHistory() {
       const td = el("td");
       td.colSpan = 5;
       const line = el("div", "line");
-      line.appendChild(el("span", "", new Date(m.date + "T00:00").toDateString()));
+      line.appendChild(el("span", "", longDate(new Date(m.date + "T00:00"))));
       const sums = el("span");
       sums.appendChild(el("span", "plus", "+" + days[m.date].in));
       sums.appendChild(document.createTextNode("  "));
@@ -1116,8 +1125,8 @@ async function replaceAll(newProducts, newMovements, message) {
 
 document.getElementById("clear-btn").addEventListener("click", () => {
   if (saving) return;
-  if (!confirm("Delete ALL products and history for EVERYONE? This cannot be undone.")) return;
-  replaceAll([], [], "All data deleted");
+  if (!confirm(t("Delete ALL products and history for EVERYONE? This cannot be undone."))) return;
+  replaceAll([], [], t("All data deleted"));
 });
 
 // The reorder warning levels on the Insights page
@@ -1132,7 +1141,7 @@ document.getElementById("reorder-form").addEventListener("submit", function (eve
   saveToServer("save_settings", {
     p_order_now: Number(document.getElementById("order-now").value),
     p_order_soon: Number(document.getElementById("order-soon").value)
-  }, "Saved");
+  }, t("Saved"));
 });
 
 // Data from before the database, still saved in this browser
@@ -1150,11 +1159,10 @@ document.getElementById("import-btn").addEventListener("click", async () => {
   if (saving) return;
   const oldProducts = oldList("products");
   const oldMovements = oldList("movements").map(m => ({ ...m, delta: deltaOf(m) }));
-  const question = "Replace everything in the database with " + oldProducts.length + " products and "
-    + oldMovements.length + " history records from this browser? This cannot be undone.";
+  const question = t("Replace everything in the database with {products} products and {records} history records from this browser? This cannot be undone.", { products: oldProducts.length, records: oldMovements.length });
   if (!confirm(question)) return;
 
-  if (await replaceAll(oldProducts, oldMovements, "Data moved to the database")) {
+  if (await replaceAll(oldProducts, oldMovements, t("Data moved to the database"))) {
     localStorage.removeItem("products");
     localStorage.removeItem("movements");
     showImportCard();
@@ -1163,7 +1171,7 @@ document.getElementById("import-btn").addEventListener("click", async () => {
 
 document.getElementById("demo-btn").addEventListener("click", () => {
   if (saving) return;
-  if (!confirm("This replaces everything in the database with sample data, for everyone. Continue?")) return;
+  if (!confirm(t("This replaces everything in the database with sample data, for everyone. Continue?"))) return;
 
   const demo = [
     { name: "Material A", kind: "material", unit: "kg", min: 30, base: 8, cost: 40 },
@@ -1212,7 +1220,7 @@ document.getElementById("demo-btn").addEventListener("click", () => {
     });
   }
 
-  replaceAll(sample, sampleMoves, "Sample data loaded");
+  replaceAll(sample, sampleMoves, t("Sample data loaded"));
 });
 
 // =====================================================
@@ -1233,6 +1241,15 @@ async function checkForChanges() {
   if (!busy) render();
 }
 
+document.querySelectorAll(".lang-btn").forEach(b => {
+  b.addEventListener("click", () => {
+    setLanguage(language === "th" ? "en" : "th");
+    if (currentUser) { showUserName(); render(); }
+    else document.getElementById("login-error").textContent = "";
+  });
+});
+
+translatePage();
 showImportCard();
 
 if (db) {
@@ -1242,5 +1259,5 @@ if (db) {
   db.auth.onAuthStateChange(event => { if (event === "SIGNED_OUT") endSession(); });
   db.auth.getSession().then(({ data }) => { if (data.session) startSession(); });
 } else {
-  document.getElementById("login-error").textContent = "This app is not connected to its database yet. See README.md.";
+  document.getElementById("login-error").textContent = t("This app is not connected to its database yet. See README.md.");
 }

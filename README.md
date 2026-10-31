@@ -12,6 +12,7 @@ A simple stock tracking web app that works on a phone or a computer. It is plain
 - Insights page with profit, sales graphs, reorder warnings, slow products and top customers
 - Export the stock list and full history as CSV for Excel
 - Sample data to try the app
+- Thai and English, with a button to switch
 
 ## How it works
 
