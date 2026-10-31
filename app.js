@@ -331,7 +331,9 @@ function renderStock() {
   }
 
   for (const p of shown) {
-    const li = el("li", isFull() ? "clickable" : "");
+    // Only products that need attention get a colour and a label
+    const state = p.stock <= 0 ? "out" : p.stock < p.min ? "low" : "";
+    const li = el("li", "stock-row" + (state ? " need-" + state : "") + (isFull() ? " clickable" : ""));
 
     const left = el("div");
     left.appendChild(el("div", "", p.name));
@@ -339,9 +341,7 @@ function renderStock() {
 
     const right = el("div", "right");
     right.appendChild(el("div", "qty", p.stock + " " + p.unit));
-    if (p.stock <= 0) right.appendChild(el("div", "small minus", t("Out of stock")));
-    else if (p.stock < p.min) right.appendChild(el("div", "small low", t("Low stock")));
-    else right.appendChild(el("div", "small ok", t("OK")));
+    if (state) right.appendChild(el("span", "badge " + state, t(state === "out" ? "Out of stock" : "Low stock")));
 
     li.appendChild(left);
     li.appendChild(right);
