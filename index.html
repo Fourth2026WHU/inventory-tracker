@@ -32,14 +32,16 @@
     <button data-page="record" class="main"><span class="ico"><span>➕</span></span><span>Record</span></button>
     <button data-page="history" class="full-only"><span class="ico">📋</span><span>History</span></button>
     <button data-page="insights" class="full-only"><span class="ico">📈</span><span>Insights</span></button>
-    <button data-page="settings" class="full-only"><span class="ico">⚙️</span><span>Settings</span></button>
   </nav>
 
   <main>
 
     <div class="userbar">
       <span class="muted">Logged in as <b id="user-name"></b></span>
-      <button type="button" id="logout-btn" class="btn small ghost">Log out</button>
+      <div class="userbar-buttons">
+        <button type="button" data-page="settings" class="btn small ghost full-only" aria-label="Settings">⚙️</button>
+        <button type="button" id="logout-btn" class="btn small ghost">Log out</button>
+      </div>
     </div>
 
     <!-- PAGE 1: HOME -->

@@ -22,6 +22,7 @@ const db = configured
 const FULL_ONLY_PAGES = ["history", "insights", "settings"];
 const PAGE_SIZE = 1000;       // the most rows Supabase sends in one reply
 const CHECK_EVERY_MS = 60000; // how often an open app looks for changes from other devices
+const PICKER_MAX_ROWS = 50;   // how many products the Record list shows at once
 const RANGE_TITLES = { day: "Today, hour by hour", week: "Last 7 days", month: "Last 30 days", year: "Last 12 months" };
 
 let currentUser = null;     // the account that is logged in
@@ -348,6 +349,94 @@ document.getElementById("p-delete").addEventListener("click", async function () 
 // 5. RECORD PAGE
 // =====================================================
 
+// A box to type a product name in, with a list of matching products under it
+function makeProductPicker(line) {
+  const box = el("div", "picker");
+  const input = el("input");
+  const menu = el("ul", "picker-menu");
+  const chosen = findProduct(line.productId);
+  let matches = [];
+  let active = -1; // the row picked with the arrow keys
+
+  input.type = "text";
+  input.required = true;
+  input.autocomplete = "off";
+  input.placeholder = products.length ? "Type or choose" : "No products yet (add one in Stock)";
+  input.setAttribute("aria-label", "Product");
+  input.value = chosen ? chosen.name : "";
+  menu.hidden = true;
+
+  // The form cannot be saved until a real product is chosen
+  function checkChosen() {
+    input.setCustomValidity(line.productId === null ? "Choose a product from the list" : "");
+  }
+
+  function closeMenu() {
+    menu.hidden = true;
+    active = -1;
+  }
+
+  function choose(product) {
+    line.productId = product.id;
+    input.value = product.name;
+    checkChosen();
+    closeMenu();
+  }
+
+  function fillMenu() {
+    const chosenNow = findProduct(line.productId);
+    const typed = chosenNow && chosenNow.name === input.value ? "" : input.value.trim().toLowerCase();
+    const found = products.filter(p => p.name.toLowerCase().includes(typed));
+    matches = found.slice(0, PICKER_MAX_ROWS);
+
+    menu.innerHTML = "";
+    if (found.length === 0) menu.appendChild(el("li", "empty", "No product matches."));
+    matches.forEach((p, i) => {
+      const li = el("li", i === active ? "active" : "");
+      li.appendChild(el("span", "", p.name));
+      li.appendChild(el("span", "small", p.stock + " " + p.unit + " left"));
+      li.addEventListener("mousedown", event => event.preventDefault()); // keeps the box focused
+      li.addEventListener("click", () => choose(p));
+      menu.appendChild(li);
+    });
+    if (found.length > matches.length) menu.appendChild(el("li", "empty", "Keep typing to see more products."));
+    menu.hidden = false;
+    const row = menu.children[active];
+    if (row) row.scrollIntoView({ block: "nearest" });
+  }
+
+  input.addEventListener("focus", () => { input.select(); fillMenu(); });
+  input.addEventListener("click", fillMenu);
+  input.addEventListener("blur", closeMenu);
+  input.addEventListener("input", () => {
+    const typed = input.value.trim().toLowerCase();
+    const exact = products.find(p => p.name.toLowerCase() === typed);
+    line.productId = exact ? exact.id : null;
+    checkChosen();
+    active = -1;
+    fillMenu();
+  });
+  input.addEventListener("keydown", event => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      active = Math.max(0, Math.min(matches.length - 1, active + step));
+      fillMenu();
+    } else if (event.key === "Enter" && !menu.hidden) {
+      event.preventDefault(); // Enter picks a product here, it does not save the form
+      const pick = matches[Math.max(active, 0)];
+      if (pick) choose(pick);
+    } else if (event.key === "Escape") {
+      closeMenu();
+    }
+  });
+
+  checkChosen();
+  box.appendChild(input);
+  box.appendChild(menu);
+  return box;
+}
+
 // One row per product. Typed values live in "cart", so redrawing never loses them.
 function renderRecord() {
   const box = document.getElementById("cart-rows");
@@ -356,20 +445,6 @@ function renderRecord() {
   cart.forEach((line, i) => {
     if (!findProduct(line.productId)) line.productId = null;
     const row = el("div", "cart-row");
-
-    const select = el("select");
-    select.required = true;
-    select.setAttribute("aria-label", "Product");
-    const blank = el("option", "", products.length ? "Choose a product" : "No products yet (add one in Stock)");
-    blank.value = "";
-    select.appendChild(blank);
-    for (const p of products) {
-      const option = el("option", "", p.name + " (" + p.stock + " " + p.unit + " left)");
-      option.value = p.id;
-      select.appendChild(option);
-    }
-    select.value = line.productId === null ? "" : line.productId;
-    select.addEventListener("change", () => { line.productId = Number(select.value) || null; });
 
     const qty = el("input");
     qty.type = "number";
@@ -381,7 +456,7 @@ function renderRecord() {
     qty.value = line.qty;
     qty.addEventListener("input", () => { line.qty = qty.value; });
 
-    row.appendChild(select);
+    row.appendChild(makeProductPicker(line));
     row.appendChild(qty);
 
     if (cart.length > 1) {
@@ -882,7 +957,7 @@ document.getElementById("demo-btn").addEventListener("click", () => {
 // 9. START
 // =====================================================
 
-document.querySelectorAll("nav button").forEach(b => {
+document.querySelectorAll("button[data-page]").forEach(b => {
   b.addEventListener("click", () => showPage(b.dataset.page));
 });
 
