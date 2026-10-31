@@ -8,7 +8,7 @@ A simple stock tracking web app that works on a phone or a computer. It is plain
 - Add, edit and delete materials and finished products
 - Record stock IN and OUT for many products at once, with optional prices, customer or supplier, a note and a confirm step
 - Low stock and out of stock warnings
-- History page with a detailed log
+- History page with a detailed log, where a full account can undo a wrong record
 - Insights page with profit, sales graphs, reorder warnings, slow products and top customers
 - Export the stock list and full history as CSV for Excel
 - Sample data to try the app

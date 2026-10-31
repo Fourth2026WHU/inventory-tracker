@@ -10,7 +10,8 @@
 // =====================================================
 
 let products = [];
-let movements = [];                  // stays empty for limited accounts
+let movements = [];                  // what counts. Stays empty for limited accounts
+let allMovements = [];               // the same, plus undone records and their UNDO rows
 let todayTotals = { in: 0, out: 0 }; // comes from the server, because limited accounts have no movements
 
 const configured = SUPABASE_URL.startsWith("https://") && !!window.supabase;
@@ -49,13 +50,21 @@ async function fetchAllMovements() {
   const all = [];
   while (true) {
     const { data, error } = await db.from("movements")
-      .select("id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact")
+      .select("id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact,undoesId:undoes_id")
       .order("id")
       .range(all.length, all.length + PAGE_SIZE - 1);
     if (error) throw error;
     all.push(...data);
-    if (data.length < PAGE_SIZE) return addProfit(all);
+    if (data.length < PAGE_SIZE) return all;
   }
+}
+
+// Undone records stay in the history, but no total or profit counts them
+function setMovements(all) {
+  const undone = new Set(all.filter(m => m.type === "UNDO").map(m => m.undoesId));
+  for (const m of all) m.undone = undone.has(m.id);
+  allMovements = all;
+  movements = addProfit(all.filter(m => !m.undone && m.type !== "UNDO"));
 }
 
 // Work out the sales and profit of each OUT. The cost is the average of
@@ -98,7 +107,7 @@ async function loadData() {
     // History is never edited, so the same number of rows means nothing changed
     const { count, error } = await db.from("movements").select("id", { count: "exact", head: true });
     if (error) throw error;
-    if (count !== movements.length) movements = await fetchAllMovements();
+    if (count !== allMovements.length) setMovements(await fetchAllMovements());
   }
 }
 
@@ -204,6 +213,7 @@ function endSession() {
   currentUser = null;
   products = [];
   movements = [];
+  allMovements = [];
   todayTotals = { in: 0, out: 0 };
   document.body.classList.add("logged-out");
   document.getElementById("login-user").value = "";
@@ -990,7 +1000,7 @@ function renderHistory() {
   const { index } = buildBuckets(historyRange);
 
   // Newest first, keeping only what the filters ask for
-  const rows = movements.filter(m => {
+  const rows = allMovements.filter(m => {
     const key = bucketKey(historyRange, m);
     if (key === null || !(key in index)) return false;
     if (productId && m.productId !== productId) return false;
@@ -1002,12 +1012,13 @@ function renderHistory() {
   let totalIn = 0, totalOut = 0;
   for (const m of rows) {
     const day = days[m.date] || (days[m.date] = { in: 0, out: 0 });
+    if (m.undone) continue;
     if (m.type === "IN") { day.in += m.qty; totalIn += m.qty; }
     if (m.type === "OUT") { day.out += m.qty; totalOut += m.qty; }
   }
   document.getElementById("hist-in").textContent = totalIn;
   document.getElementById("hist-out").textContent = totalOut;
-  document.getElementById("hist-count").textContent = rows.length;
+  document.getElementById("hist-count").textContent = rows.filter(m => !m.undone && m.type !== "UNDO").length;
 
   // Log table, one block for each day
   const body = document.getElementById("history-rows");
@@ -1020,7 +1031,7 @@ function renderHistory() {
     body.appendChild(tr);
   }
 
-  const labels = { IN: t("IN"), OUT: t("OUT"), ADJUST: t("Fix") };
+  const labels = { IN: t("IN"), OUT: t("OUT"), ADJUST: t("Fix"), UNDO: t("Undo") };
   let lastDate = null;
   for (const m of rows.slice(0, historyLimit)) {
     if (m.date !== lastDate) {
@@ -1041,21 +1052,33 @@ function renderHistory() {
     }
 
     const d = deltaOf(m);
-    const tr = el("tr");
+    const canUndo = !m.undone && m.type !== "UNDO" && findProduct(m.productId);
+    const tr = el("tr", m.undone ? "undone" : canUndo ? "clickable" : "");
+    if (canUndo) tr.addEventListener("click", () => undoRecord(m));
     tr.appendChild(el("td", "small", m.time || ""));
     const name = el("td");
     name.appendChild(el("div", "", m.productName));
     const price = m.unitPrice !== null ? m.unitPrice : m.unitCost;
-    const info = [m.contact, price === null ? "" : "@ " + money(price), m.note].filter(Boolean).join(" · ");
+    const original = m.type === "UNDO" ? allMovements.find(x => x.id === m.undoesId) : null;
+    const undid = original ? t("Undid the record from {date} {time}", { date: original.date, time: original.time }) : "";
+    const info = [undid, m.contact, price === null ? "" : "@ " + money(price), m.note].filter(Boolean).join(" · ");
     if (info) name.appendChild(el("div", "small", info));
     tr.appendChild(name);
-    tr.appendChild(el("td", "", "")).appendChild(el("span", "badge " + m.type.toLowerCase(), labels[m.type] || m.type));
+    const badge = m.undone ? el("span", "badge undo", t("Undone")) : el("span", "badge " + m.type.toLowerCase(), labels[m.type] || m.type);
+    tr.appendChild(el("td", "", "")).appendChild(badge);
     tr.appendChild(el("td", "num " + (m.type === "ADJUST" ? "adj" : (d >= 0 ? "plus" : "minus")), (d > 0 ? "+" : "") + d));
     tr.appendChild(el("td", "num", m.stockAfter === null ? "" : String(m.stockAfter)));
     body.appendChild(tr);
   }
 
   document.getElementById("history-more").style.display = rows.length > historyLimit ? "block" : "none";
+}
+
+function undoRecord(m) {
+  const p = findProduct(m.productId);
+  if (!p || saving) return;
+  const question = t("Undo this record of {name}? Stock changes from {before} to {after} {unit}.", { name: m.productName, before: p.stock, after: p.stock - deltaOf(m), unit: p.unit });
+  if (confirm(question)) saveToServer("undo_record", { p_id: m.id }, t("Record undone"));
 }
 
 function changeHistoryFilter() {
@@ -1111,15 +1134,16 @@ document.getElementById("export-stock").addEventListener("click", () => {
 });
 
 document.getElementById("export-history").addEventListener("click", () => {
-  const labels = { IN: "IN", OUT: "OUT", ADJUST: "Correction" };
-  const rows = [["Date", "Time", "Product", "Type", "Quantity", "Change", "Stock after", "Customer or supplier", "Selling price", "Cost", "Note"]];
-  for (const m of movements) rows.push([m.date, m.time, m.productName, labels[m.type] || m.type, m.qty, deltaOf(m), m.stockAfter, m.contact, m.unitPrice, m.unitCost, m.note]);
+  const labels = { IN: "IN", OUT: "OUT", ADJUST: "Correction", UNDO: "Undo" };
+  const rows = [["Date", "Time", "Product", "Type", "Quantity", "Change", "Stock after", "Customer or supplier", "Selling price", "Cost", "Note", "Undone"]];
+  for (const m of allMovements) rows.push([m.date, m.time, m.productName, labels[m.type] || m.type, m.qty, deltaOf(m), m.stockAfter, m.contact, m.unitPrice, m.unitCost, m.note, m.undone ? "Yes" : ""]);
   downloadCSV("history-" + todayString() + ".csv", rows);
 });
 
 // Replace all products and history on the server, for every device
 async function replaceAll(newProducts, newMovements, message) {
   movements = []; // makes loadData fetch the new history
+  allMovements = [];
   return saveToServer("replace_all_data", { p_products: newProducts, p_movements: newMovements }, message);
 }
 
