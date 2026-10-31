@@ -6,10 +6,10 @@ A simple stock tracking web app that works on a phone or a computer. It is plain
 
 - Log in before using the app, with full and limited accounts
 - Add, edit and delete materials and finished products
-- Record stock IN and OUT for many products at once, with an optional note and a confirm step
+- Record stock IN and OUT for many products at once, with optional prices, customer or supplier, a note and a confirm step
 - Low stock and out of stock warnings
-- History page with a graph and a log table
-- Graphs by day, week, month and year
+- History page with a detailed log
+- Insights page with profit, sales graphs, reorder warnings, slow products and top customers
 - Export the stock list and full history as CSV for Excel
 - Sample data to try the app
 
@@ -24,7 +24,8 @@ The website is hosted on GitHub Pages, and the data and logins are in a free [Su
 | Home totals, Stock list, Needs attention | Yes | Yes |
 | Record stock IN and OUT | Yes | Yes |
 | Add, edit and delete products | Yes | No |
-| History, Insights, Recent activity, notes | Yes | No |
+| Customer and supplier names, when recording | Yes | Yes |
+| History, Insights, Recent activity, notes, prices and profit | Yes | No |
 | Settings, export, sample data, delete all | Yes | No |
 
 These rules are enforced by the database, not by the website. The rules are in [supabase/schema.sql](supabase/schema.sql). A limited account gets no history even when it calls the database directly from the browser console. A login with no row in `profiles` gets nothing at all.
@@ -99,6 +100,16 @@ delete from public.profiles where username = 'staff';
 ```
 
 Users cannot change their own access from the app.
+
+## Updating the database
+
+When an update changes [supabase/schema.sql](supabase/schema.sql), paste the whole file into the **SQL Editor** again and press **Run**. It keeps your existing data. Do this before publishing the update to the website.
+
+## How profit works
+
+Prices change from sale to sale, so each record keeps its own price. Enter a cost per unit on stock IN and a selling price per unit on stock OUT. Both are optional.
+
+Profit for a sale is its selling price minus the average of everything paid for that product up to that day. A sale with no price, or a product with no cost yet, is not counted in profit, and Insights shows how many sales were left out.
 
 ## Good to know
 

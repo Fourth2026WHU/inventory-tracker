@@ -39,7 +39,7 @@
     <div class="userbar">
       <span class="muted">Logged in as <b id="user-name"></b></span>
       <div class="userbar-buttons">
-        <button type="button" data-page="settings" class="btn small ghost full-only" aria-label="Settings">⚙️</button>
+        <button type="button" data-page="settings" class="btn small icon-btn full-only" aria-label="Settings"><span>⚙️</span></button>
         <button type="button" id="logout-btn" class="btn small ghost">Log out</button>
       </div>
     </div>
@@ -105,7 +105,11 @@
           <button type="button" id="add-line-btn" class="btn ghost">+ Add another product</button>
         </div>
         <div class="card">
-          <label class="last">Note (customer or supplier, optional)
+          <div class="field">
+            <div class="field-title" id="contact-label">Supplier (optional)</div>
+            <div id="contact-box"></div>
+          </div>
+          <label class="last">Note (optional)
             <input type="text" id="move-note">
           </label>
         </div>
@@ -113,7 +117,7 @@
       </form>
     </section>
 
-    <!-- PAGE 4: HISTORY (graph and log table) -->
+    <!-- PAGE 4: HISTORY (log table) -->
     <section id="page-history" class="page">
       <h1>History</h1>
       <div class="seg" id="history-range">
@@ -128,12 +132,6 @@
         <button type="button" data-type="OUT">OUT</button>
       </div>
       <select id="history-product"></select>
-
-      <div class="card">
-        <h2 id="history-title"></h2>
-        <div id="history-chart"></div>
-        <div class="legend"><span class="dot in"></span>IN <span class="dot out"></span>OUT</div>
-      </div>
 
       <div class="stats">
         <div class="stat"><b id="hist-in">0</b><small>Total IN</small></div>
@@ -164,22 +162,45 @@
       </div>
       <select id="insight-product"></select>
 
-      <div class="card">
-        <h2 id="chart-title"></h2>
-        <div id="insight-chart"></div>
-        <div class="legend"><span class="dot in"></span>IN <span class="dot out"></span>OUT</div>
-      </div>
-
-      <div class="stats">
-        <div class="stat"><b id="ins-in">0</b><small>Total IN</small></div>
-        <div class="stat"><b id="ins-out">0</b><small>Total OUT</small></div>
-        <div class="stat"><b id="ins-net">0</b><small>Net change</small></div>
+      <div class="stats kpis">
+        <div class="stat"><b id="ins-profit">0</b><small>Profit</small><small id="ins-profit-change" class="change"></small></div>
+        <div class="stat"><b id="ins-units">0</b><small>Units OUT</small><small id="ins-units-change" class="change"></small></div>
+        <div class="stat"><b id="ins-order">0</b><small>To order</small></div>
+        <div class="stat"><b id="ins-still">0</b><small>Not moving</small></div>
       </div>
       <p class="muted hint" id="ins-hint"></p>
 
-      <div class="card" id="top-card">
-        <h2>Top selling / used</h2>
-        <ul id="top-list"></ul>
+      <div class="insight-grid">
+        <div class="card span-two">
+          <h2 id="chart-title"></h2>
+          <div id="insight-chart"></div>
+          <div class="legend"><span class="dot sales"></span>Sales <span class="dot profit"></span>Profit</div>
+        </div>
+        <div class="card" id="top-card">
+          <h2>Top selling / used</h2>
+          <ul id="top-list"></ul>
+        </div>
+        <div class="card">
+          <h2>Reorder soon</h2>
+          <ul id="reorder-list"></ul>
+        </div>
+        <div class="card">
+          <h2>Not moving</h2>
+          <div class="seg" id="still-seg">
+            <button type="button" data-days="30" class="active">30 days</button>
+            <button type="button" data-days="60">60 days</button>
+            <button type="button" data-days="90">90 days</button>
+          </div>
+          <ul id="still-list"></ul>
+        </div>
+        <div class="card">
+          <h2>Top customers</h2>
+          <ul id="customer-list"></ul>
+        </div>
+        <div class="card" id="profit-card">
+          <h2>Most profitable</h2>
+          <ul id="profit-list"></ul>
+        </div>
       </div>
     </section>
 
@@ -192,6 +213,17 @@
         <button id="export-stock" class="btn">Download stock list</button>
         <button id="export-history" class="btn" style="margin-top:10px">Download full history</button>
       </div>
+      <form class="card" id="reorder-form">
+        <h2>Reorder warnings</h2>
+        <p class="muted">Based on how fast each product sold in the last 30 days. Set these to your slowest delivery time.</p>
+        <label>Order now when stock left is this many days or less
+          <input type="number" id="order-now" min="1" step="1" required>
+        </label>
+        <label>Order soon when stock left is this many days or less
+          <input type="number" id="order-soon" min="1" step="1" required>
+        </label>
+        <button type="submit" class="btn">Save warnings</button>
+      </form>
       <div class="card">
         <h2>Try it with sample data</h2>
         <p class="muted">Fills the app with one year of sample movements so you can see the graphs. This replaces everything in the database, for everyone.</p>
