@@ -52,7 +52,6 @@ const THAI = {
   "Material": "วัตถุดิบ",
   "Finished product": "สินค้าสำเร็จรูป",
   "{kind} · warn below {min}": "{kind} · เตือนเมื่อต่ำกว่า {min}",
-  "OK": "ปกติ",
   "Add product": "เพิ่มสินค้า",
   "Edit product": "แก้ไขสินค้า",
   "Name": "ชื่อ",
