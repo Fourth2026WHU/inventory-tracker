@@ -109,6 +109,10 @@
       </div>
       <input type="search" id="stock-search" placeholder="Search products">
       <p class="muted hint full-only">Tap a product to edit, correct its stock, or delete it.</p>
+      <div id="waiting-card" class="card full-only">
+        <h2>Waiting for stock</h2>
+        <ul id="waiting-list"></ul>
+      </div>
       <ul id="stock-list" class="card"></ul>
     </section>
 
@@ -311,8 +315,31 @@
         <input type="number" id="p-min" min="0" step="1" required>
       </label>
       <div class="dialog-buttons">
+        <button type="button" id="p-order" class="btn ghost">Ordered</button>
         <button type="button" id="p-delete" class="btn danger">Delete</button>
         <button type="button" id="p-cancel" class="btn ghost">Cancel</button>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Pop-up used to place an order, and to receive it -->
+  <dialog id="order-dialog">
+    <form id="order-form">
+      <h2 id="order-title"></h2>
+      <p class="muted" id="order-product"></p>
+      <label>Quantity
+        <input type="number" id="order-qty" min="0" step="any" inputmode="decimal" required>
+      </label>
+      <label id="order-contact-box">Supplier (optional)
+        <input type="text" id="order-contact" list="supplier-names" maxlength="200">
+        <datalist id="supplier-names"></datalist>
+      </label>
+      <label id="order-cost-box">Cost per unit (optional)
+        <input type="number" id="order-cost" min="0" step="any" inputmode="decimal">
+      </label>
+      <div class="dialog-buttons">
+        <button type="button" id="order-back" class="btn ghost">Back</button>
         <button type="submit" class="btn">Save</button>
       </div>
     </form>
