@@ -345,7 +345,7 @@ begin
   if p_order_now < 1 or p_order_soon < p_order_now then
     raise exception 'Order soon must be the same as or more than Order now.';
   end if;
-  update public.app_settings set order_now_days = p_order_now, order_soon_days = p_order_soon;
+  update public.app_settings set order_now_days = p_order_now, order_soon_days = p_order_soon where true;
 end;
 $$;
 
@@ -401,7 +401,7 @@ set search_path = ''
 as $$
 begin
   perform public.require_access(array['full']);
-  update public.app_settings set last_backup_at = now();
+  update public.app_settings set last_backup_at = now() where true;
 end;
 $$;
 
@@ -444,7 +444,7 @@ begin
   from jsonb_array_elements(p_contacts) as c
   on conflict (kind, lower(name)) do nothing;
 
-  update public.app_settings set order_now_days = p_order_now, order_soon_days = p_order_soon;
+  update public.app_settings set order_now_days = p_order_now, order_soon_days = p_order_soon where true;
 
   -- New rows must get an id after the ones just added
   perform setval(
