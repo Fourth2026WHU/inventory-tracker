@@ -38,6 +38,9 @@ let recordType = "IN";      // which button is selected on the Record page
 let recordContact = "";     // the customer or supplier typed on the Record page
 let cart = [newCartLine()]; // the product lines on the Record page
 let contacts = [];          // the customer and supplier names to choose from
+let openOrders = [];        // stock that was ordered and has not arrived, full accounts only
+let orderProduct = null;    // the product being ordered in the order pop-up
+let receiving = null;       // or the order being received
 let reorder = { now: 14, soon: 21 }; // reorder warning levels, in days of stock left
 let notMovingDays = 30;     // which button is selected in the Not moving list
 let currentRange = "week";  // which button is selected on the Insights page
@@ -50,12 +53,12 @@ let confirmSave = null;     // what the Confirm button in that pop-up saves
 let counted = {};           // what was typed on the Count stock page, by product id
 let saving = false;         // true while a save is on its way, so a double tap cannot save twice
 
-// Get the movements a few pages at a time, oldest first
-async function fetchAllMovements() {
+// Get every row of a table a few pages at a time, oldest first
+async function fetchAllRows(table, columns) {
   const all = [];
   while (true) {
-    const { data, error } = await db.from("movements")
-      .select("id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact,undoesId:undoes_id,recordedBy:recorded_by")
+    const { data, error } = await db.from(table)
+      .select(columns)
       .order("id")
       .range(all.length, all.length + PAGE_SIZE - 1);
     if (error) throw error;
@@ -63,6 +66,12 @@ async function fetchAllMovements() {
     if (data.length < PAGE_SIZE) return all;
   }
 }
+
+function fetchAllMovements() {
+  return fetchAllRows("movements", "id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact,undoesId:undoes_id,recordedBy:recorded_by");
+}
+
+const ORDER_COLUMNS = "id,date:order_date,productId:product_id,productName:product_name,qty,contact,status,orderedBy:ordered_by";
 
 // Undone records stay in the history, but no total or profit counts them
 function setMovements(all) {
@@ -111,6 +120,10 @@ async function loadData() {
       reorder = { now: levels.order_now_days, soon: levels.order_soon_days };
       lastBackup = levels.last_backup_at;
     }
+
+    const waiting = await db.from("purchase_orders").select(ORDER_COLUMNS).eq("status", "open").order("id");
+    if (waiting.error) throw waiting.error;
+    openOrders = waiting.data;
 
     // History is never edited, so the same number of rows means nothing changed
     const { count, error } = await db.from("movements").select("id", { count: "exact", head: true });
@@ -226,6 +239,7 @@ function endSession() {
   movements = [];
   allMovements = [];
   counted = {};
+  openOrders = [];
   todayTotals = { in: 0, out: 0 };
   document.body.classList.add("logged-out");
   document.getElementById("login-user").value = "";
@@ -274,6 +288,7 @@ function render() {
     renderHistory();
     renderBackup();
     renderCount();
+    renderWaiting();
     if (!document.getElementById("reorder-form").contains(document.activeElement)) showReorderSettings();
   }
 }
@@ -310,6 +325,7 @@ function renderHome() {
     li.appendChild(el("div", "", p.name));
     const right = el("div", "qty " + (p.stock <= 0 ? "minus" : "low"));
     right.textContent = (p.stock <= 0 ? t("Out of stock") : t("Low: {n} {unit}", { n: p.stock, unit: p.unit }));
+    if (waitingQty(p.id)) right.textContent += " · " + t("Waiting for {n} {unit}", { n: waitingQty(p.id), unit: p.unit });
     li.appendChild(right);
     list.appendChild(li);
   }
@@ -366,6 +382,18 @@ function renderStock() {
     const right = el("div", "right");
     right.appendChild(el("div", "qty", p.stock + " " + p.unit));
     if (state) right.appendChild(el("span", "badge " + state, t(state === "out" ? "Out of stock" : "Low stock")));
+    const waiting = waitingQty(p.id);
+    if (waiting) {
+      right.appendChild(el("div", "", ""));
+      right.lastChild.appendChild(el("span", "badge waiting", t("Waiting for {n} {unit}", { n: waiting, unit: p.unit })));
+    } else if (state && isFull()) {
+      const order = el("button", "btn small ghost", t("Ordered"));
+      order.addEventListener("click", event => {
+        event.stopPropagation();
+        openOrderDialog(p);
+      });
+      right.appendChild(order);
+    }
 
     li.appendChild(left);
     li.appendChild(right);
@@ -373,6 +401,87 @@ function renderStock() {
     list.appendChild(li);
   }
 }
+
+// ---------- ordered, waiting for stock ----------
+
+function waitingQty(id) {
+  return openOrders.filter(o => o.productId === id).reduce((sum, o) => sum + o.qty, 0);
+}
+
+function renderWaiting() {
+  document.getElementById("waiting-card").style.display = openOrders.length ? "" : "none";
+  const list = document.getElementById("waiting-list");
+  list.innerHTML = "";
+  for (const o of openOrders) {
+    const p = findProduct(o.productId);
+    const li = el("li", "waiting-row");
+    li.appendChild(el("div", "", o.productName));
+    const info = [o.qty + (p ? " " + p.unit : ""), o.contact, o.date, o.orderedBy ? t("by {name}", { name: o.orderedBy }) : ""];
+    li.appendChild(el("div", "small", info.filter(Boolean).join(" · ")));
+
+    const buttons = el("div", "head-buttons");
+    const cancel = el("button", "btn small ghost", t("Cancel order"));
+    cancel.addEventListener("click", async () => {
+      if (saving || !confirm(t("Cancel the order of {name}?", { name: o.productName }))) return;
+      saveToServer("cancel_order", { p_id: o.id }, t("Order cancelled"));
+    });
+    const receive = el("button", "btn small", t("Stock arrived"));
+    receive.addEventListener("click", () => openReceiveDialog(o));
+    buttons.appendChild(cancel);
+    buttons.appendChild(receive);
+    li.appendChild(buttons);
+    list.appendChild(li);
+  }
+}
+
+function showOrderDialog(title, product, qty) {
+  document.getElementById("order-title").textContent = title;
+  document.getElementById("order-product").textContent = product;
+  document.getElementById("order-qty").value = qty;
+  document.getElementById("order-contact-box").style.display = receiving ? "none" : "";
+  document.getElementById("order-cost-box").style.display = receiving ? "" : "none";
+  document.getElementById("order-contact").value = "";
+  document.getElementById("order-cost").value = "";
+
+  const names = document.getElementById("supplier-names");
+  names.innerHTML = "";
+  for (const c of contacts.filter(c => c.kind === "supplier")) {
+    const option = el("option");
+    option.value = c.name;
+    names.appendChild(option);
+  }
+  document.getElementById("order-dialog").showModal();
+}
+
+function openOrderDialog(p) {
+  orderProduct = p;
+  receiving = null;
+  showOrderDialog(t("Record an order"), p.name, "");
+}
+
+function openReceiveDialog(o) {
+  orderProduct = null;
+  receiving = o;
+  showOrderDialog(t("Stock arrived"), o.productName, o.qty);
+}
+
+document.getElementById("order-back").addEventListener("click", () => document.getElementById("order-dialog").close());
+
+document.getElementById("order-form").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  if (saving) return;
+  const qty = Number(document.getElementById("order-qty").value);
+  if (!(qty > 0)) {
+    alert(t("Quantity must be more than zero."));
+    return;
+  }
+
+  const cost = document.getElementById("order-cost").value;
+  const saved = receiving
+    ? await saveToServer("receive_order", { p_id: receiving.id, p_qty: qty, p_cost: cost === "" ? null : Number(cost) }, t("Stock added"))
+    : await saveToServer("place_order", { p_product_id: orderProduct.id, p_qty: qty, p_contact: document.getElementById("order-contact").value.trim() }, t("Order saved"));
+  if (saved) document.getElementById("order-dialog").close();
+});
 
 function openProductDialog(id) {
   editingId = id;
@@ -388,6 +497,7 @@ function openProductDialog(id) {
     ? t("Stock now (change it only to fix a mistake)")
     : t("Starting stock");
   document.getElementById("p-delete").style.display = p ? "block" : "none";
+  document.getElementById("p-order").style.display = p ? "block" : "none";
 
   document.getElementById("product-dialog").showModal();
 }
@@ -411,6 +521,12 @@ document.getElementById("product-form").addEventListener("submit", async functio
     p_min: Number(document.getElementById("p-min").value)
   }, t("Saved"));
   if (saved) document.getElementById("product-dialog").close();
+});
+
+document.getElementById("p-order").addEventListener("click", () => {
+  const p = findProduct(editingId);
+  document.getElementById("product-dialog").close();
+  if (p) openOrderDialog(p);
 });
 
 // Delete
@@ -1046,7 +1162,8 @@ function renderInsights() {
   fillList("reorder-list", toOrder.map(r => [
     r.product.name,
     t("{n} {unit} left", { n: r.product.stock, unit: r.product.unit }),
-    t(r.days <= reorder.now ? "Order now · {n} days" : "Order soon · {n} days", { n: r.days }),
+    t(r.days <= reorder.now ? "Order now · {n} days" : "Order soon · {n} days", { n: r.days })
+      + (waitingQty(r.product.id) ? " · " + t("Waiting for {n} {unit}", { n: waitingQty(r.product.id), unit: r.product.unit }) : ""),
     r.days <= reorder.now ? "minus" : "low"
   ]), t("Nothing needs ordering yet."));
 
@@ -1296,6 +1413,7 @@ async function downloadBackup() {
       products,
       movements: await fetchAllMovements(),
       contacts,
+      orders: await fetchAllRows("purchase_orders", ORDER_COLUMNS),
       settings: reorder
     };
     downloadFile("tc-inventory-backup-" + todayString() + ".json", JSON.stringify(backup), "application/json");
@@ -1364,7 +1482,8 @@ document.getElementById("restore-file").addEventListener("change", async functio
     p_movements: backup.movements,
     p_contacts: backup.contacts,
     p_order_now: backup.settings.now,
-    p_order_soon: backup.settings.soon
+    p_order_soon: backup.settings.soon,
+    p_orders: backup.orders || []
   }, t("Backup restored"));
 });
 

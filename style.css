@@ -142,6 +142,12 @@ li.clickable { cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   background: var(--card); border-radius: 16px; box-shadow: var(--shadow);
 }
+#waiting-card { margin-bottom: 12px; }
+#waiting-list { list-style: none; margin: 0; padding: 0; }
+.waiting-row { display: block; }
+.waiting-row .head-buttons { margin-top: 10px; }
+.waiting-row .head-buttons .btn { flex: 1; }
+.stock-row .btn { margin-top: 6px; }
 .need-low, .need-out { padding-left: 10px; border-left: 4px solid var(--warn); }
 .need-out { border-left-color: var(--bad); }
 .need-low .qty { color: var(--warn); }
@@ -255,6 +261,7 @@ label.last { margin-bottom: 0; }
 .badge { display: inline-block; padding: 2px 7px; border-radius: 8px; font-size: 0.74rem; font-weight: bold; }
 .badge.in { background: rgba(18, 128, 74, 0.12); color: var(--in); }
 .badge.out { background: rgba(214, 32, 58, 0.1); color: var(--out); }
+.badge.waiting { background: var(--card2); color: var(--accent-text); }
 .badge.adjust, .badge.low { background: rgba(163, 95, 0, 0.12); color: var(--warn); }
 .badge.undo { background: var(--card2); color: var(--muted); }
 .log tr.clickable { cursor: pointer; }

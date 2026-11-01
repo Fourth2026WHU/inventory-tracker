@@ -8,6 +8,7 @@ A simple stock tracking web app that works on a phone or a computer. It is plain
 - Add, edit and delete materials and finished products
 - Record stock IN and OUT for many products at once, with optional prices, customer or supplier, a note and a confirm step
 - Low stock and out of stock warnings
+- Record what was ordered, so everyone sees what is on its way, then add it to stock in one tap when it arrives
 - Stock count that compares what is on the shelf with the app and saves any difference to the history
 - History page with a detailed log that shows who made each record, where a full account can undo a wrong record
 - Insights page with profit, sales graphs, reorder warnings, slow products and top customers
@@ -29,6 +30,7 @@ The website is hosted on GitHub Pages, and the data and logins are in a free [Su
 | Add, edit, count and delete products | Yes | No |
 | Customer and supplier names, when recording | Yes | Yes |
 | History, Insights, Recent activity, notes, prices and profit | Yes | No |
+| Orders waiting for stock | Yes | No |
 | Settings, export, sample data, delete all | Yes | No |
 
 These rules are enforced by the database, not by the website. The rules are in [supabase/schema.sql](supabase/schema.sql). A limited account gets no history even when it calls the database directly from the browser console. A login with no row in `profiles` gets nothing at all.
@@ -123,7 +125,7 @@ where email = 'backup@inventory.invalid';
 
 The password goes in the `BACKUP_PASSWORD` secret of the private repo.
 
-The file holds products, history, customers, suppliers and reorder warnings. It is private shop data, so never add it to this public repo. It does not hold logins. If the Supabase project is lost, repeat the setup steps above first, then restore the file.
+The file holds products, history, customers, suppliers, orders and reorder warnings. It is private shop data, so never add it to this public repo. It does not hold logins. If the Supabase project is lost, repeat the setup steps above first, then restore the file.
 
 **Restore from a backup** in Settings replaces everything for everyone. The current data is downloaded first, and if any row in the file fails, nothing is changed.
 
