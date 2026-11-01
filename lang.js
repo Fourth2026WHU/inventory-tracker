@@ -128,6 +128,7 @@ const THAI = {
   "Undone": "ยกเลิกแล้ว",
   "by {name}": "โดย {name}",
   "Manual correction": "แก้ไขด้วยมือ",
+  "Last price": "ราคาล่าสุด",
   "Waiting for stock": "รอของ",
   "Waiting for {n} {unit}": "รอของ {n} {unit}",
   "Ordered": "สั่งแล้ว",

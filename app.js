@@ -542,7 +542,34 @@ document.getElementById("p-delete").addEventListener("click", async function () 
 // 5. RECORD PAGE
 // =====================================================
 
-function newCartLine() { return { productId: null, qty: "", price: "" }; }
+function newCartLine() { return { productId: null, qty: "", price: "", typedPrice: false }; }
+
+// The newest price for a product, from the same customer or supplier if there is one.
+// Limited accounts have no history here, so they get no suggestion.
+function lastPrice(productId) {
+  const field = recordType === "OUT" ? "unitPrice" : "unitCost";
+  const who = recordContact.trim().toLowerCase();
+  let newest = null;
+  for (let i = movements.length - 1; i >= 0; i--) {
+    const m = movements[i];
+    if (m.type !== recordType || m.productId !== productId || m[field] === null) continue;
+    if (!newest) newest = m;
+    if (!who || m.contact.toLowerCase() === who) return m;
+  }
+  return newest;
+}
+
+// Fill in the last price until the user types their own. It updates the boxes
+// directly, so it can run while someone is typing a customer name.
+function suggestPrices() {
+  for (const line of cart) {
+    if (line.typedPrice) continue;
+    const last = line.productId === null ? null : lastPrice(line.productId);
+    line.price = last ? String(last[recordType === "OUT" ? "unitPrice" : "unitCost"]) : "";
+    if (line.priceBox) line.priceBox.value = line.price;
+    if (line.priceHint) line.priceHint.textContent = last ? [t("Last price"), last.contact, last.date].filter(Boolean).join(" · ") : "";
+  }
+}
 
 // A box to type in, with a list of matching names under it.
 // With "free" any text is allowed, otherwise something must be chosen from the list.
@@ -644,10 +671,12 @@ function makeProductPicker(line) {
       const exact = products.find(p => p.name.toLowerCase() === text.trim().toLowerCase());
       line.productId = exact ? exact.id : null;
       checkChosen(input);
+      suggestPrices();
     },
     onChoose(p, input) {
       line.productId = p.id;
       checkChosen(input);
+      suggestPrices();
     }
   });
 
@@ -669,8 +698,8 @@ function renderContactBox() {
     startText: recordContact,
     items: contacts.filter(c => c.kind === kind),
     free: true,
-    onType(text) { recordContact = text; },
-    onChoose(c) { recordContact = c.name; }
+    onType(text) { recordContact = text; suggestPrices(); },
+    onChoose(c) { recordContact = c.name; suggestPrices(); }
   }));
 }
 
@@ -701,7 +730,14 @@ function renderRecord() {
     price.placeholder = t(recordType === "OUT" ? "Price each" : "Cost each");
     price.setAttribute("aria-label", price.placeholder);
     price.value = line.price;
-    price.addEventListener("input", () => { line.price = price.value; });
+    price.addEventListener("input", () => {
+      line.price = price.value;
+      line.typedPrice = true;
+      hint.textContent = "";
+    });
+    const hint = el("div", "small price-hint");
+    line.priceBox = price;
+    line.priceHint = hint;
 
     row.appendChild(makeProductPicker(line));
     row.appendChild(qty);
@@ -714,8 +750,10 @@ function renderRecord() {
       remove.addEventListener("click", () => { cart.splice(i, 1); renderRecord(); });
       row.appendChild(remove);
     }
+    row.appendChild(hint);
     box.appendChild(row);
   });
+  suggestPrices();
 }
 
 // The cart as one line per product and price (the same product chosen twice is added together)
@@ -740,6 +778,7 @@ document.querySelectorAll("#type-seg button").forEach(b => {
   b.addEventListener("click", () => {
     recordType = b.dataset.type;
     recordContact = "";
+    for (const line of cart) line.typedPrice = false;
     document.querySelectorAll("#type-seg button").forEach(x => x.classList.toggle("active", x === b));
     renderRecord();
   });
