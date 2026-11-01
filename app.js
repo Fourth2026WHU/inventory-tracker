@@ -21,7 +21,7 @@ const db = configured
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storage: window.sessionStorage } })
   : null;
 
-const FULL_ONLY_PAGES = ["history", "insights", "settings"];
+const FULL_ONLY_PAGES = ["history", "insights", "settings", "count"];
 const PAGE_SIZE = 1000;       // the most rows Supabase sends in one reply
 const CHECK_EVERY_MS = 60000; // how often an open app looks for changes from other devices
 const PICKER_MAX_ROWS = 50;   // how many products the Record list shows at once
@@ -46,6 +46,8 @@ let historyType = "ALL";
 let historyLimit = 100;     // how many log rows to show
 let editingId = null;       // null = adding a product, otherwise the id being edited
 let confirmLines = [];      // the lines shown in the confirm pop-up
+let confirmSave = null;     // what the Confirm button in that pop-up saves
+let counted = {};           // what was typed on the Count stock page, by product id
 let saving = false;         // true while a save is on its way, so a double tap cannot save twice
 
 // Get the movements a few pages at a time, oldest first
@@ -142,6 +144,9 @@ function todayString() { return dateStr(new Date()); }
 
 // How much a movement changed the stock (+ or -).
 // Works for old records from Phase 1 too (they have no "delta").
+// Corrections get their note from the app, so it can follow the language
+function noteOf(m) { return m.type === "ADJUST" ? t(m.note) : m.note; }
+
 function deltaOf(m) {
   if (typeof m.delta === "number") return m.delta;
   return m.type === "IN" ? m.qty : -m.qty;
@@ -220,6 +225,7 @@ function endSession() {
   products = [];
   movements = [];
   allMovements = [];
+  counted = {};
   todayTotals = { in: 0, out: 0 };
   document.body.classList.add("logged-out");
   document.getElementById("login-user").value = "";
@@ -253,7 +259,7 @@ function showPage(name) {
   if (!isFull() && FULL_ONLY_PAGES.includes(name)) name = "home";
   document.body.classList.toggle("wide", name === "insights");
   document.querySelectorAll(".page").forEach(p => p.classList.toggle("active", p.id === "page-" + name));
-  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.page === name));
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.page === (name === "count" ? "stock" : name)));
   window.scrollTo(0, 0);
   render();
 }
@@ -267,6 +273,7 @@ function render() {
     renderInsights();
     renderHistory();
     renderBackup();
+    renderCount();
     if (!document.getElementById("reorder-form").contains(document.activeElement)) showReorderSettings();
   }
 }
@@ -320,7 +327,7 @@ function makeMoveRow(m) {
   const li = el("li");
   const left = el("div");
   left.appendChild(el("div", "", m.productName));
-  const info = [m.date, m.time, m.contact, m.note].filter(Boolean).join(" · ");
+  const info = [m.date, m.time, m.contact, noteOf(m)].filter(Boolean).join(" · ");
   left.appendChild(el("div", "small", info));
 
   const d = deltaOf(m);
@@ -672,14 +679,18 @@ document.getElementById("move-form").addEventListener("submit", function (event)
   document.getElementById("confirm-title").textContent = t("Confirm stock {type}", { type: t(recordType) });
   document.getElementById("confirm-note").textContent = details.filter(Boolean).join(" · ");
   confirmLines = lines;
+  confirmSave = saveCart;
   document.getElementById("confirm-dialog").showModal();
 });
 
 document.getElementById("confirm-back").addEventListener("click", () => document.getElementById("confirm-dialog").close());
 
+document.getElementById("confirm-save").addEventListener("click", () => {
+  if (!saving) confirmSave();
+});
+
 // The server checks the stock again, in case another device saved first
-document.getElementById("confirm-save").addEventListener("click", async function () {
-  if (saving) return;
+async function saveCart() {
   const count = confirmLines.length;
   const saved = await saveToServer("record_cart", {
     p_type: recordType,
@@ -694,7 +705,129 @@ document.getElementById("confirm-save").addEventListener("click", async function
   recordContact = "";
   document.getElementById("move-note").value = "";
   renderRecord();
+}
+
+// ---------- stock count ----------
+
+function countDifference(p) {
+  return Math.round((Number(counted[p.id]) - p.stock) * 10000) / 10000;
+}
+
+// Shows the number counted against the number in the app
+function showCountDifference(p, box) {
+  box.className = "diff";
+  box.textContent = "";
+  if (counted[p.id] === undefined) return;
+  const d = countDifference(p);
+  box.classList.add(d === 0 ? "ok" : d > 0 ? "plus" : "minus");
+  box.textContent = d === 0 ? t("Matches") : t("Difference {n}", { n: (d > 0 ? "+" : "") + d });
+}
+
+function showCountStatus() {
+  const done = products.filter(p => counted[p.id] !== undefined).length;
+  document.getElementById("count-status").textContent = t("Counted {done} of {total}", { done, total: products.length });
+}
+
+function renderCount() {
+  const list = document.getElementById("count-list");
+  showCountStatus();
+  if (list.contains(document.activeElement)) return; // a refresh must not interrupt typing
+  list.innerHTML = "";
+  const search = document.getElementById("count-search").value.trim().toLowerCase();
+  const shown = products.filter(p => p.name.toLowerCase().includes(search));
+
+  if (shown.length === 0) {
+    list.appendChild(el("li", "empty", products.length ? t("No product matches your search.") : t("No products yet. Tap + Add product.")));
+    return;
+  }
+
+  for (const p of shown) {
+    const li = el("li", "count-row");
+    const left = el("div");
+    left.appendChild(el("div", "", p.name));
+    left.appendChild(el("div", "small", t("In the app: {n} {unit}", { n: p.stock, unit: p.unit })));
+
+    const right = el("div", "right");
+    const input = el("input");
+    input.type = "number";
+    input.min = "0";
+    input.step = "any";
+    input.inputMode = "decimal";
+    input.setAttribute("aria-label", p.name);
+    if (counted[p.id] !== undefined) input.value = counted[p.id];
+    const difference = el("div", "diff");
+    showCountDifference(p, difference);
+    input.addEventListener("input", () => {
+      if (input.value === "") delete counted[p.id];
+      else counted[p.id] = input.value;
+      showCountDifference(p, difference);
+      showCountStatus();
+    });
+    right.appendChild(input);
+    right.appendChild(difference);
+
+    li.appendChild(left);
+    li.appendChild(right);
+    list.appendChild(li);
+  }
+}
+
+document.getElementById("count-btn").addEventListener("click", () => showPage("count"));
+document.getElementById("count-back").addEventListener("click", () => showPage("stock"));
+document.getElementById("count-search").addEventListener("input", renderCount);
+
+document.getElementById("count-review").addEventListener("click", () => {
+  const lines = products.filter(p => counted[p.id] !== undefined);
+  if (lines.length === 0) {
+    alert(t("Type at least one counted number."));
+    return;
+  }
+  if (lines.some(p => Number(counted[p.id]) < 0)) {
+    alert(t("The counted number cannot be below zero."));
+    return;
+  }
+
+  const changes = lines.filter(p => countDifference(p) !== 0);
+  if (changes.length === 0) {
+    counted = {};
+    toast(t("Everything matches. Nothing to change."));
+    showPage("stock");
+    return;
+  }
+
+  const list = document.getElementById("confirm-list");
+  list.innerHTML = "";
+  for (const p of changes) {
+    const d = countDifference(p);
+    const li = el("li");
+    const left = el("div");
+    left.appendChild(el("div", "", p.name));
+    left.appendChild(el("div", "small", t("Stock {before} → {after} {unit}", { before: p.stock, after: Number(counted[p.id]), unit: p.unit })));
+    li.appendChild(left);
+    li.appendChild(el("div", d > 0 ? "plus" : "minus", (d > 0 ? "+" : "") + d));
+    list.appendChild(li);
+  }
+
+  const same = lines.length - changes.length;
+  document.getElementById("confirm-title").textContent = t("Confirm stock count");
+  document.getElementById("confirm-note").textContent = same ? t("{n} more counted products match.", { n: same }) : "";
+  confirmLines = changes;
+  confirmSave = saveCount;
+  document.getElementById("confirm-dialog").showModal();
 });
+
+async function saveCount() {
+  const count = confirmLines.length;
+  const saved = await saveToServer("record_count", {
+    p_lines: confirmLines.map(p => ({ product_id: p.id, counted: Number(counted[p.id]) }))
+  }, count === 1 ? t("Saved 1 product") : t("Saved {n} products", { n: count }));
+
+  document.getElementById("confirm-dialog").close();
+  if (!saved) return;
+  counted = {};
+  document.getElementById("count-search").value = "";
+  showPage("stock");
+}
 
 // Fill the product dropdowns (and remember what was selected)
 function renderDropdowns() {
@@ -1069,7 +1202,7 @@ function renderHistory() {
     const original = m.type === "UNDO" ? allMovements.find(x => x.id === m.undoesId) : null;
     const undid = original ? t("Undid the record from {date} {time}", { date: original.date, time: original.time }) : "";
     const by = m.recordedBy ? t("by {name}", { name: m.recordedBy }) : "";
-    const info = [undid, m.contact, price === null ? "" : "@ " + money(price), m.note, by].filter(Boolean).join(" · ");
+    const info = [undid, m.contact, price === null ? "" : "@ " + money(price), noteOf(m), by].filter(Boolean).join(" · ");
     if (info) name.appendChild(el("div", "small", info));
     tr.appendChild(name);
     const badge = m.undone ? el("span", "badge undo", t("Undone")) : el("span", "badge " + m.type.toLowerCase(), labels[m.type] || m.type);
