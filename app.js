@@ -39,6 +39,9 @@ let recordContact = "";     // the customer or supplier typed on the Record page
 let cart = [newCartLine()]; // the product lines on the Record page
 let contacts = [];          // the customer and supplier names to choose from
 let openOrders = [];        // stock that was ordered and has not arrived, full accounts only
+let recipes = [];           // what goes into one unit of each product, full accounts only
+let recipeLines = [];       // the rows in the recipe pop-up
+let makingProduct = null;   // the product in the make pop-up
 let orderProduct = null;    // the product being ordered in the order pop-up
 let receiving = null;       // or the order being received
 let reorder = { now: 14, soon: 21 }; // reorder warning levels, in days of stock left
@@ -68,7 +71,7 @@ async function fetchAllRows(table, columns) {
 }
 
 function fetchAllMovements() {
-  return fetchAllRows("movements", "id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact,undoesId:undoes_id,recordedBy:recorded_by");
+  return fetchAllRows("movements", "id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact,undoesId:undoes_id,recordedBy:recorded_by,batchId:batch_id");
 }
 
 const ORDER_COLUMNS = "id,date:order_date,productId:product_id,productName:product_name,qty,contact,status,orderedBy:ordered_by";
@@ -87,7 +90,7 @@ function addProfit(list) {
   const paid = {};
   for (const m of list) {
     const p = paid[m.productId] || (paid[m.productId] = { qty: 0, cost: 0 });
-    if (m.type === "IN" && m.unitCost !== null) {
+    if ((m.type === "IN" || m.type === "MADE") && m.unitCost !== null) {
       p.qty += m.qty;
       p.cost += m.qty * m.unitCost;
     }
@@ -124,6 +127,10 @@ async function loadData() {
     const waiting = await db.from("purchase_orders").select(ORDER_COLUMNS).eq("status", "open").order("id");
     if (waiting.error) throw waiting.error;
     openOrders = waiting.data;
+
+    const items = await db.from("recipe_items").select("productId:product_id,materialId:material_id,qty").order("product_id");
+    if (items.error) throw items.error;
+    recipes = items.data;
 
     // History is never edited, so the same number of rows means nothing changed
     const { count, error } = await db.from("movements").select("id", { count: "exact", head: true });
@@ -240,6 +247,7 @@ function endSession() {
   allMovements = [];
   counted = {};
   openOrders = [];
+  recipes = [];
   todayTotals = { in: 0, out: 0 };
   document.body.classList.add("logged-out");
   document.getElementById("login-user").value = "";
@@ -395,12 +403,160 @@ function renderStock() {
       right.appendChild(order);
     }
 
+    if (recipeOf(p.id).length) {
+      const make = el("button", "btn small ghost", t("Make"));
+      make.addEventListener("click", event => {
+        event.stopPropagation();
+        openMakeDialog(p);
+      });
+      right.appendChild(make);
+    }
+
     li.appendChild(left);
     li.appendChild(right);
     if (isFull()) li.addEventListener("click", () => openProductDialog(p.id));
     list.appendChild(li);
   }
 }
+
+// ---------- recipes and production ----------
+
+function recipeOf(id) {
+  return recipes.filter(r => r.productId === id);
+}
+
+function openRecipeDialog(p) {
+  editingId = p.id;
+  recipeLines = recipeOf(p.id).map(r => ({ materialId: r.materialId, qty: r.qty }));
+  if (recipeLines.length === 0) recipeLines.push({ materialId: null, qty: "" });
+  document.getElementById("recipe-product").textContent = t("What goes into 1 {unit} of {name}", { unit: p.unit, name: p.name });
+  renderRecipeRows();
+  document.getElementById("recipe-dialog").showModal();
+}
+
+function renderRecipeRows() {
+  const box = document.getElementById("recipe-rows");
+  box.innerHTML = "";
+  recipeLines.forEach((line, i) => {
+    const row = el("div", "recipe-row");
+    const chosen = findProduct(line.materialId);
+    const picker = makePicker({
+      label: t("Material"),
+      placeholder: t("Choose a material"),
+      startText: chosen ? chosen.name : "",
+      items: products.filter(p => p.id !== editingId),
+      detail: p => p.unit,
+      onType(text) {
+        const exact = products.find(p => p.id !== editingId && p.name.toLowerCase() === text.trim().toLowerCase());
+        line.materialId = exact ? exact.id : null;
+      },
+      onChoose(p) { line.materialId = p.id; }
+    });
+
+    const qty = el("input");
+    qty.type = "number";
+    qty.min = "0";
+    qty.step = "any";
+    qty.inputMode = "decimal";
+    qty.placeholder = t("Qty");
+    qty.setAttribute("aria-label", t("Quantity"));
+    qty.value = line.qty;
+    qty.addEventListener("input", () => { line.qty = qty.value; });
+
+    const remove = el("button", "cart-remove", "✕");
+    remove.type = "button";
+    remove.setAttribute("aria-label", t("Remove this product"));
+    remove.addEventListener("click", () => { recipeLines.splice(i, 1); renderRecipeRows(); });
+
+    row.appendChild(picker);
+    row.appendChild(qty);
+    row.appendChild(remove);
+    box.appendChild(row);
+  });
+}
+
+document.getElementById("recipe-add").addEventListener("click", () => {
+  recipeLines.push({ materialId: null, qty: "" });
+  renderRecipeRows();
+});
+document.getElementById("recipe-back").addEventListener("click", () => document.getElementById("recipe-dialog").close());
+
+document.getElementById("recipe-form").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  if (saving) return;
+  const lines = recipeLines.filter(l => l.materialId !== null || l.qty !== "");
+  if (lines.some(l => l.materialId === null)) {
+    alert(t("Choose a product from the list"));
+    return;
+  }
+  if (lines.some(l => !(Number(l.qty) > 0))) {
+    alert(t("Quantity must be more than zero."));
+    return;
+  }
+  const saved = await saveToServer("save_recipe", {
+    p_product_id: editingId,
+    p_lines: lines.map(l => ({ material_id: l.materialId, qty: Number(l.qty) }))
+  }, t("Saved"));
+  if (saved) document.getElementById("recipe-dialog").close();
+});
+
+// The average paid for a product so far, or null if no cost is known yet.
+// The database works out the same number in average_cost.
+function averageCost(id) {
+  let qty = 0;
+  let cost = 0;
+  for (const m of movements) {
+    if (m.productId !== id || (m.type !== "IN" && m.type !== "MADE") || m.unitCost === null) continue;
+    qty += m.qty;
+    cost += m.qty * m.unitCost;
+  }
+  return qty > 0 ? cost / qty : null;
+}
+
+function openMakeDialog(p) {
+  makingProduct = p;
+  document.getElementById("make-product").textContent = p.name;
+  document.getElementById("make-qty").value = "";
+  showMakeList();
+  document.getElementById("make-dialog").showModal();
+}
+
+// What this production takes out of stock, and what each unit costs
+function showMakeList() {
+  const qty = Number(document.getElementById("make-qty").value) || 0;
+  const list = document.getElementById("make-list");
+  list.innerHTML = "";
+  let each = 0;
+  for (const r of recipeOf(makingProduct.id)) {
+    const material = findProduct(r.materialId);
+    if (!material) continue;
+    const needed = Math.round(r.qty * qty * 10000) / 10000;
+    const cost = averageCost(material.id);
+    each = each === null || cost === null ? null : each + r.qty * cost;
+    const li = el("li");
+    li.appendChild(el("div", "", material.name));
+    li.appendChild(el("div", needed > material.stock ? "minus" : "", t("Uses {n} of {left} {unit}", { n: needed, left: material.stock, unit: material.unit })));
+    list.appendChild(li);
+  }
+  document.getElementById("make-cost").textContent = each === null
+    ? t("Cost not known yet: a material has no cost.")
+    : t("Cost per {unit}: {n}", { unit: makingProduct.unit, n: money(each) });
+}
+
+document.getElementById("make-qty").addEventListener("input", showMakeList);
+document.getElementById("make-back").addEventListener("click", () => document.getElementById("make-dialog").close());
+
+document.getElementById("make-form").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  if (saving) return;
+  const qty = Number(document.getElementById("make-qty").value);
+  if (!(qty > 0)) {
+    alert(t("Quantity must be more than zero."));
+    return;
+  }
+  const saved = await saveToServer("record_production", { p_product_id: makingProduct.id, p_qty: qty, p_note: "" }, t("Production saved"));
+  if (saved) document.getElementById("make-dialog").close();
+});
 
 // ---------- ordered, waiting for stock ----------
 
@@ -497,7 +653,7 @@ function openProductDialog(id) {
     ? t("Stock now (change it only to fix a mistake)")
     : t("Starting stock");
   document.getElementById("p-delete").style.display = p ? "block" : "none";
-  document.getElementById("p-order").style.display = p ? "block" : "none";
+  document.getElementById("p-extra").style.display = p ? "" : "none";
 
   document.getElementById("product-dialog").showModal();
 }
@@ -521,6 +677,12 @@ document.getElementById("product-form").addEventListener("submit", async functio
     p_min: Number(document.getElementById("p-min").value)
   }, t("Saved"));
   if (saved) document.getElementById("product-dialog").close();
+});
+
+document.getElementById("p-recipe").addEventListener("click", () => {
+  const p = findProduct(editingId);
+  document.getElementById("product-dialog").close();
+  if (p) openRecipeDialog(p);
 });
 
 document.getElementById("p-order").addEventListener("click", () => {
@@ -1112,7 +1274,7 @@ function reorderList() {
   const from = dateBack(SPEED_DAYS - 1);
   const sold = {};
   for (const m of movements) {
-    if (m.type === "OUT" && m.date >= from) sold[m.productId] = (sold[m.productId] || 0) + m.qty;
+    if ((m.type === "OUT" || m.type === "USE") && m.date >= from) sold[m.productId] = (sold[m.productId] || 0) + m.qty;
   }
   return products
     .filter(p => sold[p.id])
@@ -1125,7 +1287,7 @@ function reorderList() {
 function notMovingList() {
   const lastOut = {};
   for (const m of movements) {
-    if (m.type === "OUT") lastOut[m.productId] = m.date; // movements are oldest first
+    if (m.type === "OUT" || m.type === "USE") lastOut[m.productId] = m.date; // movements are oldest first
   }
   const from = dateBack(notMovingDays - 1);
   return products
@@ -1327,7 +1489,7 @@ function renderHistory() {
     body.appendChild(tr);
   }
 
-  const labels = { IN: t("IN"), OUT: t("OUT"), ADJUST: t("Fix"), UNDO: t("Undo") };
+  const labels = { IN: t("IN"), OUT: t("OUT"), ADJUST: t("Fix"), UNDO: t("Undo"), MADE: t("Made"), USE: t("Used") };
   let lastDate = null;
   for (const m of rows.slice(0, historyLimit)) {
     if (m.date !== lastDate) {
@@ -1374,7 +1536,9 @@ function renderHistory() {
 function undoRecord(m) {
   const p = findProduct(m.productId);
   if (!p || saving) return;
-  const question = t("Undo this record of {name}? Stock changes from {before} to {after} {unit}.", { name: m.productName, before: p.stock, after: p.stock - deltaOf(m), unit: p.unit });
+  const question = m.batchId
+    ? t("Undo this whole production? The product and all its materials go back to how they were.")
+    : t("Undo this record of {name}? Stock changes from {before} to {after} {unit}.", { name: m.productName, before: p.stock, after: p.stock - deltaOf(m), unit: p.unit });
   if (confirm(question)) saveToServer("undo_record", { p_id: m.id }, t("Record undone"));
 }
 
@@ -1435,7 +1599,7 @@ document.getElementById("export-stock").addEventListener("click", () => {
 });
 
 document.getElementById("export-history").addEventListener("click", () => {
-  const labels = { IN: "IN", OUT: "OUT", ADJUST: "Correction", UNDO: "Undo" };
+  const labels = { IN: "IN", OUT: "OUT", ADJUST: "Correction", UNDO: "Undo", MADE: "Made", USE: "Used" };
   const rows = [["Date", "Time", "Product", "Type", "Quantity", "Change", "Stock after", "Customer or supplier", "Selling price", "Cost", "Note", "Undone", "Recorded by"]];
   for (const m of allMovements) rows.push([m.date, m.time, m.productName, labels[m.type] || m.type, m.qty, deltaOf(m), m.stockAfter, m.contact, m.unitPrice, m.unitCost, m.note, m.undone ? "Yes" : "", m.recordedBy]);
   downloadCSV("history-" + todayString() + ".csv", rows);
@@ -1453,6 +1617,7 @@ async function downloadBackup() {
       movements: await fetchAllMovements(),
       contacts,
       orders: await fetchAllRows("purchase_orders", ORDER_COLUMNS),
+      recipes,
       settings: reorder
     };
     downloadFile("tc-inventory-backup-" + todayString() + ".json", JSON.stringify(backup), "application/json");
@@ -1522,7 +1687,8 @@ document.getElementById("restore-file").addEventListener("change", async functio
     p_contacts: backup.contacts,
     p_order_now: backup.settings.now,
     p_order_soon: backup.settings.soon,
-    p_orders: backup.orders || []
+    p_orders: backup.orders || [],
+    p_recipes: backup.recipes || []
   }, t("Backup restored"));
 });
 
