@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TC Inventory</title>
+  <!-- Lets the site open from the phone's home screen like an app -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="TC Inventory">
+  <meta name="theme-color" content="#4a5ff0">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="logged-out">
@@ -65,6 +73,12 @@
           <div class="box in"><b id="total-in">0</b><small>Stock IN</small></div>
           <div class="box out"><b id="total-out">0</b><small>Stock OUT</small></div>
         </div>
+      </div>
+
+      <div class="card full-only" id="backup-card">
+        <h2>Time to back up</h2>
+        <p class="muted" id="backup-reminder"></p>
+        <button type="button" class="btn backup-btn">Back up now</button>
       </div>
 
       <div class="card full-only">
@@ -217,6 +231,14 @@
         <p class="muted">Downloads a .csv file. Excel opens it directly.</p>
         <button id="export-stock" class="btn">Download stock list</button>
         <button id="export-history" class="btn" style="margin-top:10px">Download full history</button>
+      </div>
+      <div class="card">
+        <h2>Backup</h2>
+        <p class="muted">Saves products, history, customers, suppliers and reorder warnings in one file. Keep it somewhere safe and private. Logins are not included.</p>
+        <p class="muted" id="backup-status"></p>
+        <button type="button" class="btn backup-btn">Download backup</button>
+        <button type="button" id="restore-btn" class="btn ghost" style="margin-top:10px">Restore from a backup</button>
+        <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
       </div>
       <form class="card" id="reorder-form">
         <h2>Reorder warnings</h2>

@@ -13,6 +13,7 @@ let products = [];
 let movements = [];                  // what counts. Stays empty for limited accounts
 let allMovements = [];               // the same, plus undone records and their UNDO rows
 let todayTotals = { in: 0, out: 0 }; // comes from the server, because limited accounts have no movements
+let lastBackup = null;               // when someone last downloaded a backup
 
 const configured = SUPABASE_URL.startsWith("https://") && !!window.supabase;
 // The login lasts until the browser tab is closed
@@ -25,6 +26,8 @@ const PAGE_SIZE = 1000;       // the most rows Supabase sends in one reply
 const CHECK_EVERY_MS = 60000; // how often an open app looks for changes from other devices
 const PICKER_MAX_ROWS = 50;   // how many products the Record list shows at once
 const LIST_MAX_ROWS = 8;      // how many rows each Insights list shows
+const BACKUP_EVERY_DAYS = 30; // Home reminds full accounts after this many days
+const BACKUP_APP = "tc-inventory-backup"; // marks a file as a backup of this app
 const SPEED_DAYS = 30;        // selling speed is worked out from this many recent days
 const RANGE_TITLES = { day: "Today, hour by hour", week: "Last 7 days", month: "Last 30 days", year: "Last 12 months" };
 const RANGE_DAYS = { day: 1, week: 7, month: 30, year: 365 };
@@ -100,9 +103,12 @@ async function loadData() {
   contacts = names.data;
 
   if (isFull()) {
-    const { data: levels, error: levelsError } = await db.from("app_settings").select("order_now_days,order_soon_days").maybeSingle();
+    const { data: levels, error: levelsError } = await db.from("app_settings").select("order_now_days,order_soon_days,last_backup_at").maybeSingle();
     if (levelsError) throw levelsError;
-    if (levels) reorder = { now: levels.order_now_days, soon: levels.order_soon_days };
+    if (levels) {
+      reorder = { now: levels.order_now_days, soon: levels.order_soon_days };
+      lastBackup = levels.last_backup_at;
+    }
 
     // History is never edited, so the same number of rows means nothing changed
     const { count, error } = await db.from("movements").select("id", { count: "exact", head: true });
@@ -260,6 +266,7 @@ function render() {
   if (isFull()) {
     renderInsights();
     renderHistory();
+    renderBackup();
     if (!document.getElementById("reorder-form").contains(document.activeElement)) showReorderSettings();
   }
 }
@@ -1117,7 +1124,11 @@ function downloadCSV(filename, rows) {
   }).join(",")).join("\r\n");
 
   // The \ufeff at the start makes Excel read Chinese characters correctly
-  const blob = new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8;" });
+  downloadFile(filename, "\ufeff" + text, "text/csv;charset=utf-8;");
+}
+
+function downloadFile(filename, text, type) {
+  const blob = new Blob([text], { type });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -1138,6 +1149,89 @@ document.getElementById("export-history").addEventListener("click", () => {
   const rows = [["Date", "Time", "Product", "Type", "Quantity", "Change", "Stock after", "Customer or supplier", "Selling price", "Cost", "Note", "Undone"]];
   for (const m of allMovements) rows.push([m.date, m.time, m.productName, labels[m.type] || m.type, m.qty, deltaOf(m), m.stockAfter, m.contact, m.unitPrice, m.unitCost, m.note, m.undone ? "Yes" : ""]);
   downloadCSV("history-" + todayString() + ".csv", rows);
+});
+
+// Reads everything fresh from the server, so the file is never out of date
+async function downloadBackup() {
+  try {
+    await loadData();
+    const backup = {
+      app: BACKUP_APP,
+      version: 1,
+      createdAt: new Date().toISOString(),
+      products,
+      movements: await fetchAllMovements(),
+      contacts,
+      settings: reorder
+    };
+    downloadFile("tc-inventory-backup-" + todayString() + ".json", JSON.stringify(backup), "application/json");
+    return true;
+  } catch (e) {
+    alert(t("Could not make the backup. Try again."));
+    return false;
+  }
+}
+
+function renderBackup() {
+  const days = lastBackup ? Math.floor((Date.now() - new Date(lastBackup)) / 86400000) : null;
+  document.getElementById("backup-status").textContent = lastBackup
+    ? t("Last backup: {date}", { date: longDate(new Date(lastBackup)) })
+    : t("You have not made a backup yet.");
+
+  // An empty inline display leaves .full-only in charge of limited accounts
+  const due = products.length > 0 && (days === null || days >= BACKUP_EVERY_DAYS);
+  document.getElementById("backup-card").style.display = due ? "" : "none";
+  document.getElementById("backup-reminder").textContent = days === null
+    ? t("You have not made a backup yet.")
+    : t("Your last backup was {n} days ago.", { n: days });
+}
+
+document.querySelectorAll(".backup-btn").forEach(button => {
+  button.addEventListener("click", async () => {
+    if (saving) return;
+    saving = true;
+    const saved = await downloadBackup();
+    saving = false;
+    if (saved) saveToServer("mark_backup", {}, t("Backup downloaded"));
+  });
+});
+
+function isBackup(b) {
+  return !!b && b.app === BACKUP_APP && b.version === 1 && !!b.settings
+    && Array.isArray(b.products) && Array.isArray(b.movements) && Array.isArray(b.contacts);
+}
+
+document.getElementById("restore-btn").addEventListener("click", () => {
+  document.getElementById("restore-file").click();
+});
+
+document.getElementById("restore-file").addEventListener("change", async function () {
+  const file = this.files[0];
+  this.value = ""; // lets the same file be chosen again
+  if (!file || saving) return;
+
+  let backup = null;
+  try { backup = JSON.parse(await file.text()); } catch (e) {}
+  if (!isBackup(backup)) {
+    alert(t("This is not a TC Inventory backup file."));
+    return;
+  }
+
+  const question = t("Replace everything, for everyone, with the backup from {date}? It has {products} products and {records} history records. The current data is downloaded first.", {
+    date: longDate(new Date(backup.createdAt)), products: backup.products.length, records: backup.movements.length
+  });
+  if (!confirm(question)) return;
+  if (!await downloadBackup()) return; // never replace the data without a copy of it
+
+  movements = []; // makes loadData fetch the new history
+  allMovements = [];
+  saveToServer("restore_backup", {
+    p_products: backup.products,
+    p_movements: backup.movements,
+    p_contacts: backup.contacts,
+    p_order_now: backup.settings.now,
+    p_order_soon: backup.settings.soon
+  }, t("Backup restored"));
 });
 
 // Replace all products and history on the server, for every device
