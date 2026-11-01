@@ -53,7 +53,7 @@ async function fetchAllMovements() {
   const all = [];
   while (true) {
     const { data, error } = await db.from("movements")
-      .select("id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact,undoesId:undoes_id")
+      .select("id,date:move_date,time:move_time,productId:product_id,productName:product_name,type,qty,delta,note,stockAfter:stock_after,unitPrice:unit_price,unitCost:unit_cost,contact,undoesId:undoes_id,recordedBy:recorded_by")
       .order("id")
       .range(all.length, all.length + PAGE_SIZE - 1);
     if (error) throw error;
@@ -1068,7 +1068,8 @@ function renderHistory() {
     const price = m.unitPrice !== null ? m.unitPrice : m.unitCost;
     const original = m.type === "UNDO" ? allMovements.find(x => x.id === m.undoesId) : null;
     const undid = original ? t("Undid the record from {date} {time}", { date: original.date, time: original.time }) : "";
-    const info = [undid, m.contact, price === null ? "" : "@ " + money(price), m.note].filter(Boolean).join(" · ");
+    const by = m.recordedBy ? t("by {name}", { name: m.recordedBy }) : "";
+    const info = [undid, m.contact, price === null ? "" : "@ " + money(price), m.note, by].filter(Boolean).join(" · ");
     if (info) name.appendChild(el("div", "small", info));
     tr.appendChild(name);
     const badge = m.undone ? el("span", "badge undo", t("Undone")) : el("span", "badge " + m.type.toLowerCase(), labels[m.type] || m.type);
@@ -1146,8 +1147,8 @@ document.getElementById("export-stock").addEventListener("click", () => {
 
 document.getElementById("export-history").addEventListener("click", () => {
   const labels = { IN: "IN", OUT: "OUT", ADJUST: "Correction", UNDO: "Undo" };
-  const rows = [["Date", "Time", "Product", "Type", "Quantity", "Change", "Stock after", "Customer or supplier", "Selling price", "Cost", "Note", "Undone"]];
-  for (const m of allMovements) rows.push([m.date, m.time, m.productName, labels[m.type] || m.type, m.qty, deltaOf(m), m.stockAfter, m.contact, m.unitPrice, m.unitCost, m.note, m.undone ? "Yes" : ""]);
+  const rows = [["Date", "Time", "Product", "Type", "Quantity", "Change", "Stock after", "Customer or supplier", "Selling price", "Cost", "Note", "Undone", "Recorded by"]];
+  for (const m of allMovements) rows.push([m.date, m.time, m.productName, labels[m.type] || m.type, m.qty, deltaOf(m), m.stockAfter, m.contact, m.unitPrice, m.unitCost, m.note, m.undone ? "Yes" : "", m.recordedBy]);
   downloadCSV("history-" + todayString() + ".csv", rows);
 });
 
