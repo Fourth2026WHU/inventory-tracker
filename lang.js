@@ -126,6 +126,7 @@ const THAI = {
   "Tap a record to undo it.": "แตะรายการที่บันทึกผิดเพื่อยกเลิก",
   "Undo": "ยกเลิก",
   "Undone": "ยกเลิกแล้ว",
+  "by {name}": "โดย {name}",
   "Record undone": "ยกเลิกรายการแล้ว",
   "Undid the record from {date} {time}": "ยกเลิกรายการของ {date} {time}",
   "Undo this record of {name}? Stock changes from {before} to {after} {unit}.": "ยกเลิกรายการ {name} ใช่ไหม? สต็อกจะเปลี่ยนจาก {before} เป็น {after} {unit}",
