@@ -7,6 +7,7 @@ A simple stock tracking web app that works on a phone or a computer. It is plain
 - Log in before using the app, with full and limited accounts
 - Add, edit and delete materials and finished products
 - Record stock IN and OUT for many products at once, with optional prices, customer or supplier, a note and a confirm step
+- Fill in the last price automatically for full accounts, from the same customer or supplier when there is one
 - Low stock and out of stock warnings
 - Record what was ordered, so everyone sees what is on its way, then add it to stock in one tap when it arrives
 - Stock count that compares what is on the shelf with the app and saves any difference to the history
