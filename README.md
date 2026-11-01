@@ -109,7 +109,18 @@ When an update changes [supabase/schema.sql](supabase/schema.sql), paste the who
 
 ## Backups
 
-The free Supabase plan makes no automatic backups, so Settings can download one. Home reminds full accounts when the last backup is 30 days old.
+The free Supabase plan makes no automatic backups. A scheduled job in a separate private repo saves one every night, and Settings can also download one at any time. Home reminds full accounts when the last backup is 30 days old, so the reminder also appears if the nightly job stops.
+
+The nightly job logs in with a `backup` account. That account can only download a backup and mark the backup date, and it cannot use the app. To set it up, create a `backup` login like the others, then run:
+
+```sql
+insert into public.profiles (user_id, username, name, access)
+select id, 'backup', 'Backup', 'backup'
+from auth.users
+where email = 'backup@inventory.invalid';
+```
+
+The password goes in the `BACKUP_PASSWORD` secret of the private repo.
 
 The file holds products, history, customers, suppliers and reorder warnings. It is private shop data, so never add it to this public repo. It does not hold logins. If the Supabase project is lost, repeat the setup steps above first, then restore the file.
 
@@ -124,6 +135,5 @@ Profit for a sale is its selling price minus the average of everything paid for 
 ## Good to know
 
 - Free projects are paused after one week with no activity. The data is kept, but the app shows "Could not reach the database" until you press **Resume** in the Supabase dashboard.
-- Use the CSV export in Settings to keep your own backups. The free plan has no automatic backups you can restore.
 - The app's login lasts until the browser tab is closed.
 - To run it on your computer, open `index.html` in a browser. It uses the same database as the live site.
