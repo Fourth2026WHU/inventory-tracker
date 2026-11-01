@@ -337,6 +337,51 @@ begin
 end;
 $$;
 
+-- Save a stock count. Each product becomes the number counted, and any difference
+-- is saved in the history as a correction. All lines are saved, or none are.
+-- p_lines looks like [{"product_id": 1, "counted": 60}, ...]
+create or replace function public.record_count(p_lines jsonb)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  line record;
+  item public.products%rowtype;
+  now_here timestamp := public.shop_time();
+begin
+  perform public.require_access(array['full']);
+  if p_lines is null or jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'Add at least one product.';
+  end if;
+
+  -- Same order every time, so two devices saving at once cannot block each other
+  for line in
+    select (l ->> 'product_id')::bigint as product_id, (l ->> 'counted')::numeric as counted
+    from jsonb_array_elements(p_lines) as l
+    order by 1
+  loop
+    if line.counted is null or line.counted < 0 then
+      raise exception 'The counted number cannot be below zero.';
+    end if;
+
+    select * into item from public.products where id = line.product_id for update;
+    if not found then
+      raise exception 'A product in this record was deleted. Please check and try again.';
+    end if;
+    continue when line.counted = item.stock;
+
+    update public.products set stock = line.counted where id = item.id;
+    insert into public.movements
+      (move_date, move_time, product_id, product_name, type, qty, delta, note, stock_after, recorded_by)
+    values
+      (now_here::date, to_char(now_here, 'HH24:MI'), item.id, item.name, 'ADJUST',
+       abs(line.counted - item.stock), line.counted - item.stock, 'Stock count', line.counted,
+       public.current_name());
+  end loop;
+end;
+$$;
+
 create or replace function public.delete_product(p_id bigint)
 returns void
 language plpgsql security definer
@@ -526,6 +571,7 @@ grant execute on function public.record_cart(text, jsonb, text, text) to authent
 grant execute on function public.save_settings(integer, integer) to authenticated;
 grant execute on function public.save_product(bigint, text, text, text, numeric, numeric) to authenticated;
 grant execute on function public.delete_product(bigint) to authenticated;
+grant execute on function public.record_count(jsonb) to authenticated;
 grant execute on function public.undo_record(bigint) to authenticated;
 grant execute on function public.mark_backup() to authenticated;
 grant execute on function public.restore_backup(jsonb, jsonb, jsonb, integer, integer) to authenticated;

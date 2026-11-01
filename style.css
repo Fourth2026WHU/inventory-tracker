@@ -134,6 +134,14 @@ li.clickable { cursor: pointer; }
 .stock-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
 .stock-row .right { flex: none; max-width: 55%; }
 .stock-row .qty { font-size: 1.3rem; }
+.head-buttons { display: flex; gap: 8px; }
+.count-row input { width: 96px; margin: 0; text-align: right; }
+.count-row .diff { min-height: 1.4em; margin-top: 4px; font-size: 0.9rem; font-weight: bold; }
+.count-bar {
+  position: sticky; bottom: 92px; margin-top: 12px; padding: 10px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--card); border-radius: 16px; box-shadow: var(--shadow);
+}
 .need-low, .need-out { padding-left: 10px; border-left: 4px solid var(--warn); }
 .need-out { border-left-color: var(--bad); }
 .need-low .qty { color: var(--warn); }

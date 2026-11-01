@@ -102,11 +102,29 @@
     <section id="page-stock" class="page">
       <div class="row">
         <h1>Stock</h1>
-        <button id="add-product-btn" class="btn small full-only">+ Add product</button>
+        <div class="head-buttons full-only">
+          <button id="count-btn" class="btn small ghost">Count stock</button>
+          <button id="add-product-btn" class="btn small">+ Add product</button>
+        </div>
       </div>
       <input type="search" id="stock-search" placeholder="Search products">
       <p class="muted hint full-only">Tap a product to edit, correct its stock, or delete it.</p>
       <ul id="stock-list" class="card"></ul>
+    </section>
+
+    <!-- STOCK COUNT (opened from the Stock page) -->
+    <section id="page-count" class="page">
+      <div class="row">
+        <h1>Count stock</h1>
+        <button id="count-back" class="btn small ghost">Back</button>
+      </div>
+      <p class="muted hint">Type the number you counted on the shelf. Products you leave empty do not change.</p>
+      <input type="search" id="count-search" placeholder="Search products">
+      <ul id="count-list" class="card"></ul>
+      <div class="count-bar">
+        <span id="count-status" class="muted"></span>
+        <button id="count-review" class="btn small">Check and save</button>
+      </div>
     </section>
 
     <!-- PAGE 3: RECORD IN / OUT -->
