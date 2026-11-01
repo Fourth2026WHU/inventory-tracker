@@ -1750,17 +1750,17 @@ document.getElementById("demo-btn").addEventListener("click", () => {
   if (!confirm(t("This replaces everything in the database with sample data, for everyone. Continue?"))) return;
 
   const demo = [
-    { name: "Material A", kind: "material", unit: "kg", min: 30, base: 8, cost: 40 },
-    { name: "Material B", kind: "material", unit: "kg", min: 30, base: 6, cost: 55 },
-    { name: "Packaging box", kind: "material", unit: "pcs", min: 100, base: 20, cost: 3 },
-    { name: "Product X", kind: "product", unit: "pcs", min: 20, base: 10, cost: 60, price: 95 },
-    { name: "Product Y", kind: "product", unit: "pcs", min: 20, base: 7, cost: 90, price: 150 },
-    { name: "Product Z", kind: "product", unit: "pcs", min: 15, base: 4, cost: 150, price: 240 }
+    { name: "วัตถุดิบ 1", kind: "material", unit: "กก.", min: 30, base: 8, cost: 40 },
+    { name: "วัตถุดิบ 2", kind: "material", unit: "กก.", min: 30, base: 6, cost: 55 },
+    { name: "กล่องบรรจุ", kind: "material", unit: "ชิ้น", min: 100, base: 20, cost: 3 },
+    { name: "สินค้า 1", kind: "product", unit: "ชิ้น", min: 20, base: 10, cost: 60, price: 95 },
+    { name: "สินค้า 2", kind: "product", unit: "ชิ้น", min: 20, base: 7, cost: 90, price: 150 },
+    { name: "สินค้า 3", kind: "product", unit: "ชิ้น", min: 15, base: 4, cost: 150, price: 240 }
   ];
   const sample = demo.map((d, i) => ({ id: i + 1, name: d.name, kind: d.kind, unit: d.unit, stock: 0, min: d.min }));
   const sampleMoves = [];
-  const customers = ["Lin Trading", "Golden Shop", "Mr. Chen", "Happy Market", ""];
-  const suppliers = ["Bright Supply", "East Factory"];
+  const customers = ["ร้านสุขใจ", "ร้านมั่งมี", "คุณสมชาย", "ตลาดเจริญ", ""];
+  const suppliers = ["ร้านรุ่งเรืองวัตถุดิบ", "โรงงานตะวันออก"];
   const pick = list => list[Math.floor(Math.random() * list.length)];
   const vary = n => Math.round(n * (0.9 + Math.random() * 0.2)); // prices move a little each time
 
