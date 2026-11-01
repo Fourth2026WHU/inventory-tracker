@@ -13,6 +13,7 @@ A simple stock tracking web app that works on a phone or a computer. It is plain
 - Export the stock list and full history as CSV for Excel
 - Sample data to try the app
 - Thai and English, with a button to switch
+- Add to the phone's home screen to open it like an app. On an iPhone, open the site in Safari, tap Share, then Add to Home Screen
 
 ## How it works
 
@@ -105,6 +106,14 @@ Users cannot change their own access from the app.
 ## Updating the database
 
 When an update changes [supabase/schema.sql](supabase/schema.sql), paste the whole file into the **SQL Editor** again and press **Run**. It keeps your existing data. Do this before publishing the update to the website.
+
+## Backups
+
+The free Supabase plan makes no automatic backups, so Settings can download one. Home reminds full accounts when the last backup is 30 days old.
+
+The file holds products, history, customers, suppliers and reorder warnings. It is private shop data, so never add it to this public repo. It does not hold logins. If the Supabase project is lost, repeat the setup steps above first, then restore the file.
+
+**Restore from a backup** in Settings replaces everything for everyone. The current data is downloaded first, and if any row in the file fails, nothing is changed.
 
 ## How profit works
 

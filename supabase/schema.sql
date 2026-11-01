@@ -81,6 +81,7 @@ create table if not exists public.app_settings (
   order_soon_days integer not null default 21
 );
 insert into public.app_settings (id) values (1) on conflict (id) do nothing;
+alter table public.app_settings add column if not exists last_backup_at timestamptz;
 
 -- ---------- who is asking ----------
 
@@ -392,6 +393,73 @@ begin
 end;
 $$;
 
+-- Remember when a backup was downloaded, for the reminder on the Home page
+create or replace function public.mark_backup()
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  perform public.require_access(array['full']);
+  update public.app_settings set last_backup_at = now();
+end;
+$$;
+
+-- Replace everything with the contents of a backup file. It keeps the ids, so
+-- undone records stay linked. All of it is saved, or none of it if one row fails.
+create or replace function public.restore_backup(
+  p_products jsonb, p_movements jsonb, p_contacts jsonb, p_order_now integer, p_order_soon integer
+)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  perform public.require_access(array['full']);
+  if p_order_now < 1 or p_order_soon < p_order_now then
+    raise exception 'Order soon must be the same as or more than Order now.';
+  end if;
+
+  delete from public.movements where true;
+  delete from public.products where true;
+  delete from public.contacts where true;
+
+  insert into public.products (id, name, kind, unit, stock, min_stock)
+  select (p ->> 'id')::bigint, p ->> 'name', p ->> 'kind', p ->> 'unit',
+         (p ->> 'stock')::numeric, (p ->> 'min')::numeric
+  from jsonb_array_elements(p_products) as p;
+
+  insert into public.movements
+    (id, move_date, move_time, product_id, product_name, type, qty, delta, note, stock_after,
+     unit_price, unit_cost, contact, undoes_id)
+  select (m ->> 'id')::bigint, (m ->> 'date')::date, coalesce(m ->> 'time', ''),
+         (m ->> 'productId')::bigint, m ->> 'productName', m ->> 'type', (m ->> 'qty')::numeric,
+         (m ->> 'delta')::numeric, coalesce(m ->> 'note', ''), (m ->> 'stockAfter')::numeric,
+         (m ->> 'unitPrice')::numeric, (m ->> 'unitCost')::numeric, coalesce(m ->> 'contact', ''),
+         (m ->> 'undoesId')::bigint
+  from jsonb_array_elements(p_movements) as m;
+
+  insert into public.contacts (kind, name)
+  select c ->> 'kind', c ->> 'name'
+  from jsonb_array_elements(p_contacts) as c
+  on conflict (kind, lower(name)) do nothing;
+
+  update public.app_settings set order_now_days = p_order_now, order_soon_days = p_order_soon;
+
+  -- New rows must get an id after the ones just added
+  perform setval(
+    pg_get_serial_sequence('public.products', 'id'),
+    coalesce((select max(id) from public.products), 1),
+    exists (select from public.products)
+  );
+  perform setval(
+    pg_get_serial_sequence('public.movements', 'id'),
+    coalesce((select max(id) from public.movements), 1),
+    exists (select from public.movements)
+  );
+end;
+$$;
+
 -- ---------- who may call the functions ----------
 
 revoke execute on all functions in schema public from public, anon, authenticated;
@@ -402,4 +470,6 @@ grant execute on function public.save_settings(integer, integer) to authenticate
 grant execute on function public.save_product(bigint, text, text, text, numeric, numeric) to authenticated;
 grant execute on function public.delete_product(bigint) to authenticated;
 grant execute on function public.undo_record(bigint) to authenticated;
+grant execute on function public.mark_backup() to authenticated;
+grant execute on function public.restore_backup(jsonb, jsonb, jsonb, integer, integer) to authenticated;
 grant execute on function public.replace_all_data(jsonb, jsonb) to authenticated;
