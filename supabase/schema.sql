@@ -68,7 +68,11 @@ alter table public.movements add column if not exists contact text not null defa
 alter table public.movements add column if not exists undoes_id bigint unique references public.movements (id);
 alter table public.movements drop constraint if exists movements_type_check;
 alter table public.movements add constraint movements_type_check
-  check (type in ('IN', 'OUT', 'ADJUST', 'UNDO'));
+  check (type in ('IN', 'OUT', 'ADJUST', 'UNDO', 'MADE', 'USE'));
+
+-- One production adds a MADE row and a USE row for each material. They share a
+-- batch_id, the id of the MADE row, so they are always undone together.
+alter table public.movements add column if not exists batch_id bigint;
 
 -- The name of the account that made each record
 alter table public.movements add column if not exists recorded_by text not null default '';
@@ -92,6 +96,14 @@ create table if not exists public.purchase_orders (
   contact      text not null default '',
   status       text not null default 'open' check (status in ('open', 'received', 'cancelled')),
   ordered_by   text not null default ''
+);
+
+-- What goes into one unit of a product
+create table if not exists public.recipe_items (
+  product_id  bigint not null references public.products (id) on delete cascade,
+  material_id bigint not null references public.products (id) on delete cascade,
+  qty         numeric not null check (qty > 0),
+  primary key (product_id, material_id)
 );
 
 -- Shared settings. There is only ever one row.
@@ -137,6 +149,7 @@ alter table public.movements enable row level security;
 alter table public.contacts enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.purchase_orders enable row level security;
+alter table public.recipe_items enable row level security;
 
 drop policy if exists "read own profile" on public.profiles;
 create policy "read own profile" on public.profiles
@@ -158,6 +171,11 @@ create policy "accounts read contacts" on public.contacts
   for select to authenticated
   using (public.current_access() in ('full', 'limited'));
 
+drop policy if exists "full accounts read recipes" on public.recipe_items;
+create policy "full accounts read recipes" on public.recipe_items
+  for select to authenticated
+  using (public.current_access() = 'full');
+
 drop policy if exists "full accounts read orders" on public.purchase_orders;
 create policy "full accounts read orders" on public.purchase_orders
   for select to authenticated
@@ -169,10 +187,10 @@ create policy "full accounts read settings" on public.app_settings
   using (public.current_access() = 'full');
 
 revoke all on public.profiles, public.products, public.movements, public.contacts, public.app_settings,
-  public.purchase_orders
+  public.purchase_orders, public.recipe_items
   from public, anon, authenticated;
 grant select on public.profiles, public.products, public.movements, public.contacts, public.app_settings,
-  public.purchase_orders
+  public.purchase_orders, public.recipe_items
   to authenticated;
 
 -- ---------- reading ----------
@@ -225,13 +243,19 @@ begin
         'id', id, 'date', move_date, 'time', move_time, 'productId', product_id,
         'productName', product_name, 'type', type, 'qty', qty, 'delta', delta, 'note', note,
         'stockAfter', stock_after, 'unitPrice', unit_price, 'unitCost', unit_cost,
-        'contact', contact, 'undoesId', undoes_id, 'recordedBy', recorded_by
+        'contact', contact, 'undoesId', undoes_id, 'recordedBy', recorded_by, 'batchId', batch_id
       ) order by id), '[]'::jsonb)
       from public.movements
     ),
     'contacts', (
       select coalesce(jsonb_agg(jsonb_build_object('kind', kind, 'name', name) order by name), '[]'::jsonb)
       from public.contacts
+    ),
+    'recipes', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'productId', product_id, 'materialId', material_id, 'qty', qty
+      ) order by product_id, material_id), '[]'::jsonb)
+      from public.recipe_items
     ),
     'orders', (
       select coalesce(jsonb_agg(jsonb_build_object(
@@ -410,6 +434,118 @@ begin
 end;
 $$;
 
+-- Replace the recipe of a product. An empty list removes it.
+-- p_lines looks like [{"material_id": 2, "qty": 1.5}, ...]
+create or replace function public.save_recipe(p_product_id bigint, p_lines jsonb)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  perform public.require_access(array['full']);
+  if p_lines is null or jsonb_typeof(p_lines) <> 'array' then
+    raise exception 'Add at least one product.';
+  end if;
+  if exists (select from jsonb_array_elements(p_lines) as l
+             where (l ->> 'qty')::numeric is null or (l ->> 'qty')::numeric <= 0) then
+    raise exception 'Quantity must be more than zero.';
+  end if;
+  if exists (select from jsonb_array_elements(p_lines) as l
+             where (l ->> 'material_id')::bigint = p_product_id) then
+    raise exception 'A product cannot be a material in its own recipe.';
+  end if;
+  if not exists (select from public.products where id = p_product_id)
+     or exists (select from jsonb_array_elements(p_lines) as l
+                where not exists (select from public.products as p where p.id = (l ->> 'material_id')::bigint)) then
+    raise exception 'A product in this record was deleted. Please check and try again.';
+  end if;
+
+  delete from public.recipe_items where product_id = p_product_id;
+  insert into public.recipe_items (product_id, material_id, qty)
+  select p_product_id, (l ->> 'material_id')::bigint, sum((l ->> 'qty')::numeric)
+  from jsonb_array_elements(p_lines) as l
+  group by 2;
+end;
+$$;
+
+-- The average of everything paid for a product, or null if no cost is known yet.
+-- The Insights page works out cost the same way.
+create or replace function public.average_cost(p_id bigint)
+returns numeric
+language sql stable
+set search_path = ''
+as $$
+  select sum(m.qty * m.unit_cost) / nullif(sum(m.qty), 0)
+  from public.movements as m
+  where m.product_id = p_id and m.type in ('IN', 'MADE') and m.unit_cost is not null
+    and not exists (select from public.movements as u where u.undoes_id = m.id)
+$$;
+
+-- Make a product from its recipe: take the materials out of stock and add the
+-- product. All of it is saved, or none of it if a material runs short. The cost
+-- of each unit is saved too, unless a material has no known cost.
+create or replace function public.record_production(p_product_id bigint, p_qty numeric, p_note text default '')
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  item public.products%rowtype;
+  line record;
+  made_id bigint;
+  needed numeric;
+  each_cost numeric := 0;
+  now_here timestamp := public.shop_time();
+begin
+  perform public.require_access(array['full']);
+  if p_qty is null or p_qty <= 0 then
+    raise exception 'Quantity must be more than zero.';
+  end if;
+  if not exists (select from public.recipe_items where product_id = p_product_id) then
+    raise exception 'This product has no recipe yet.';
+  end if;
+
+  -- Same order every time, so two devices saving at once cannot block each other
+  perform 1 from public.products
+  where id = p_product_id
+     or id in (select material_id from public.recipe_items where product_id = p_product_id)
+  order by id
+  for update;
+
+  select * into item from public.products where id = p_product_id;
+  update public.products set stock = stock + p_qty where id = item.id;
+  insert into public.movements
+    (move_date, move_time, product_id, product_name, type, qty, delta, note, stock_after, recorded_by)
+  values
+    (now_here::date, to_char(now_here, 'HH24:MI'), item.id, item.name, 'MADE', p_qty, p_qty,
+     left(coalesce(p_note, ''), 500), item.stock + p_qty, public.current_name())
+  returning id into made_id;
+
+  for line in
+    select p.id, p.name, p.stock, p.unit, r.qty
+    from public.recipe_items as r
+    join public.products as p on p.id = r.material_id
+    where r.product_id = p_product_id
+    order by p.id
+  loop
+    needed := line.qty * p_qty;
+    if line.stock < needed then
+      raise exception 'Not enough %. Only % % left.', line.name, line.stock, line.unit;
+    end if;
+    each_cost := each_cost + line.qty * public.average_cost(line.id);
+
+    update public.products set stock = stock - needed where id = line.id;
+    insert into public.movements
+      (move_date, move_time, product_id, product_name, type, qty, delta, stock_after, batch_id, recorded_by)
+    values
+      (now_here::date, to_char(now_here, 'HH24:MI'), line.id, line.name, 'USE', needed, -needed,
+       line.stock - needed, made_id, public.current_name());
+  end loop;
+
+  update public.movements set batch_id = made_id, unit_cost = each_cost where id = made_id;
+end;
+$$;
+
 -- Remember that stock was ordered, so nobody orders it again
 create or replace function public.place_order(p_product_id bigint, p_qty numeric, p_contact text default '')
 returns void
@@ -507,6 +643,7 @@ end;
 $$;
 
 -- Undo one record: put the stock back and add an UNDO row to the history.
+-- All the rows of a production are undone together.
 create or replace function public.undo_record(p_id bigint)
 returns void
 language plpgsql security definer
@@ -514,6 +651,7 @@ set search_path = ''
 as $$
 declare
   target public.movements%rowtype;
+  entry public.movements%rowtype;
   item public.products%rowtype;
   now_here timestamp := public.shop_time();
 begin
@@ -531,20 +669,26 @@ begin
     raise exception 'This record was already undone.';
   end if;
 
-  select * into item from public.products where id = target.product_id for update;
-  if not found then
-    raise exception 'A product in this record was deleted. Please check and try again.';
-  end if;
-  if item.stock - target.delta < 0 then
-    raise exception 'Not enough %. Only % % left.', item.name, item.stock, item.unit;
-  end if;
+  for entry in
+    select * from public.movements
+    where id = p_id or batch_id = target.batch_id
+    order by product_id
+  loop
+    select * into item from public.products where id = entry.product_id for update;
+    if not found then
+      raise exception 'A product in this record was deleted. Please check and try again.';
+    end if;
+    if item.stock - entry.delta < 0 then
+      raise exception 'Not enough %. Only % % left.', item.name, item.stock, item.unit;
+    end if;
 
-  update public.products set stock = stock - target.delta where id = item.id;
-  insert into public.movements
-    (move_date, move_time, product_id, product_name, type, qty, delta, stock_after, undoes_id, recorded_by)
-  values
-    (now_here::date, to_char(now_here, 'HH24:MI'), item.id, item.name, 'UNDO',
-     target.qty, -target.delta, item.stock - target.delta, p_id, public.current_name());
+    update public.products set stock = stock - entry.delta where id = item.id;
+    insert into public.movements
+      (move_date, move_time, product_id, product_name, type, qty, delta, stock_after, undoes_id, recorded_by)
+    values
+      (now_here::date, to_char(now_here, 'HH24:MI'), item.id, item.name, 'UNDO',
+       entry.qty, -entry.delta, item.stock - entry.delta, entry.id, public.current_name());
+  end loop;
 end;
 $$;
 
@@ -622,11 +766,12 @@ $$;
 
 -- Replace everything with the contents of a backup file. It keeps the ids, so
 -- undone records stay linked. All of it is saved, or none of it if one row fails.
--- Older backup files have no orders.
+-- Older backup files have no orders or recipes.
 drop function if exists public.restore_backup(jsonb, jsonb, jsonb, integer, integer);
+drop function if exists public.restore_backup(jsonb, jsonb, jsonb, integer, integer, jsonb);
 create or replace function public.restore_backup(
   p_products jsonb, p_movements jsonb, p_contacts jsonb, p_order_now integer, p_order_soon integer,
-  p_orders jsonb default '[]'::jsonb
+  p_orders jsonb default '[]'::jsonb, p_recipes jsonb default '[]'::jsonb
 )
 returns void
 language plpgsql security definer
@@ -650,18 +795,22 @@ begin
 
   insert into public.movements
     (id, move_date, move_time, product_id, product_name, type, qty, delta, note, stock_after,
-     unit_price, unit_cost, contact, undoes_id, recorded_by)
+     unit_price, unit_cost, contact, undoes_id, recorded_by, batch_id)
   select (m ->> 'id')::bigint, (m ->> 'date')::date, coalesce(m ->> 'time', ''),
          (m ->> 'productId')::bigint, m ->> 'productName', m ->> 'type', (m ->> 'qty')::numeric,
          (m ->> 'delta')::numeric, coalesce(m ->> 'note', ''), (m ->> 'stockAfter')::numeric,
          (m ->> 'unitPrice')::numeric, (m ->> 'unitCost')::numeric, coalesce(m ->> 'contact', ''),
-         (m ->> 'undoesId')::bigint, coalesce(m ->> 'recordedBy', '')
+         (m ->> 'undoesId')::bigint, coalesce(m ->> 'recordedBy', ''), (m ->> 'batchId')::bigint
   from jsonb_array_elements(p_movements) as m;
 
   insert into public.contacts (kind, name)
   select c ->> 'kind', c ->> 'name'
   from jsonb_array_elements(p_contacts) as c
   on conflict (kind, lower(name)) do nothing;
+
+  insert into public.recipe_items (product_id, material_id, qty)
+  select (r ->> 'productId')::bigint, (r ->> 'materialId')::bigint, (r ->> 'qty')::numeric
+  from jsonb_array_elements(p_recipes) as r;
 
   insert into public.purchase_orders
     (id, order_date, product_id, product_name, qty, contact, status, ordered_by)
@@ -701,10 +850,12 @@ grant execute on function public.save_settings(integer, integer) to authenticate
 grant execute on function public.save_product(bigint, text, text, text, numeric, numeric) to authenticated;
 grant execute on function public.delete_product(bigint) to authenticated;
 grant execute on function public.record_count(jsonb) to authenticated;
+grant execute on function public.save_recipe(bigint, jsonb) to authenticated;
+grant execute on function public.record_production(bigint, numeric, text) to authenticated;
 grant execute on function public.place_order(bigint, numeric, text) to authenticated;
 grant execute on function public.receive_order(bigint, numeric, numeric) to authenticated;
 grant execute on function public.cancel_order(bigint) to authenticated;
 grant execute on function public.undo_record(bigint) to authenticated;
 grant execute on function public.mark_backup() to authenticated;
-grant execute on function public.restore_backup(jsonb, jsonb, jsonb, integer, integer, jsonb) to authenticated;
+grant execute on function public.restore_backup(jsonb, jsonb, jsonb, integer, integer, jsonb, jsonb) to authenticated;
 grant execute on function public.replace_all_data(jsonb, jsonb) to authenticated;

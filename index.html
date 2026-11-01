@@ -314,10 +314,44 @@
       <label>Warn me when stock is below
         <input type="number" id="p-min" min="0" step="1" required>
       </label>
-      <div class="dialog-buttons">
+      <div class="dialog-buttons" id="p-extra">
+        <button type="button" id="p-recipe" class="btn ghost">Recipe</button>
         <button type="button" id="p-order" class="btn ghost">Ordered</button>
+      </div>
+      <div class="dialog-buttons">
         <button type="button" id="p-delete" class="btn danger">Delete</button>
         <button type="button" id="p-cancel" class="btn ghost">Cancel</button>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Pop-up used to set what goes into one unit of a product -->
+  <dialog id="recipe-dialog">
+    <form id="recipe-form">
+      <h2>Recipe</h2>
+      <p class="muted" id="recipe-product"></p>
+      <div id="recipe-rows"></div>
+      <button type="button" id="recipe-add" class="btn ghost">+ Add material</button>
+      <div class="dialog-buttons">
+        <button type="button" id="recipe-back" class="btn ghost">Back</button>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Pop-up used to make a product from its recipe -->
+  <dialog id="make-dialog">
+    <form id="make-form">
+      <h2>Make</h2>
+      <p class="muted" id="make-product"></p>
+      <label>Quantity made
+        <input type="number" id="make-qty" min="0" step="any" inputmode="decimal" required>
+      </label>
+      <ul id="make-list"></ul>
+      <p class="muted" id="make-cost"></p>
+      <div class="dialog-buttons">
+        <button type="button" id="make-back" class="btn ghost">Back</button>
         <button type="submit" class="btn">Save</button>
       </div>
     </form>
