@@ -174,7 +174,7 @@ li.clickable { cursor: pointer; }
 /* Charts */
 svg { width: 100%; height: auto; display: block; }
 svg .grid { stroke: var(--line); stroke-width: 1; }
-svg .axis { fill: var(--muted); font-size: 11px; }
+svg .axis { fill: var(--muted); font-size: 12px; }
 svg .bar-in { fill: var(--in); }
 svg .bar-out { fill: var(--out); }
 svg .bar-sales { fill: var(--accent-text); }
@@ -259,15 +259,16 @@ label.last { margin-bottom: 0; }
 #history-product { margin-bottom: 12px; }
 #history-more { margin-top: 12px; }
 .log { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
-.log th { padding: 0 6px 8px; text-align: left; color: var(--muted); font-size: 0.78rem; font-weight: 600; }
-.log td { padding: 9px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.log th { padding: 0 4px 8px; white-space: nowrap; text-align: left; color: var(--muted); font-size: 0.78rem; font-weight: 600; }
+.log td { padding: 9px 4px; border-top: 1px solid var(--line); vertical-align: top; }
 .log th:first-child, .log td:first-child { padding-left: 0; }
 .log th:last-child, .log td:last-child { padding-right: 0; }
 .log .num { text-align: right; }
 .log td.small { margin: 0; white-space: nowrap; }
 .day-row td { background: var(--card2); padding: 8px 10px !important; font-weight: 600; font-size: 0.85rem; }
 .day-row .line { display: flex; justify-content: space-between; gap: 10px; }
-.badge { display: inline-block; padding: 2px 7px; border-radius: 8px; font-size: 0.74rem; font-weight: bold; }
+.log .badge { padding: 2px 5px; }
+.badge { display: inline-block; white-space: nowrap; padding: 2px 7px; border-radius: 8px; font-size: 0.74rem; font-weight: bold; }
 .badge.in { background: rgba(18, 128, 74, 0.12); color: var(--in); }
 .badge.out { background: rgba(214, 32, 58, 0.1); color: var(--out); }
 .badge.made { background: rgba(18, 128, 74, 0.12); color: var(--in); }

@@ -313,6 +313,9 @@ function renderHome() {
   document.getElementById("stat-total").textContent = products.length;
   document.getElementById("stat-low").textContent = low;
   document.getElementById("stat-out").textContent = out;
+  // Warning numbers take their warning colour only when there is something to fix
+  document.getElementById("stat-low").classList.toggle("low", low > 0);
+  document.getElementById("stat-out").classList.toggle("minus", out > 0);
 
   // Today's totals
   document.getElementById("total-in").textContent = todayTotals.in;
@@ -1415,10 +1418,12 @@ function niceStep(raw) {
 // Two bars for each box. "names" changes what they are called, IN and OUT unless given.
 function drawChart(container, buckets, names) {
   const { first, second, firstClass, secondClass } = names || { first: t("IN"), second: t("OUT"), firstClass: "bar-in", secondClass: "bar-out" };
-  const W = 600, H = 260, L = 38, R = 8, T = 10, B = 28;
+  // Draw at the real width, so the numbers and dates are not shrunk on a phone
+  const W = container.clientWidth || 600, H = Math.round(Math.min(260, Math.max(170, W * 0.45)));
+  const L = 42, R = 8, T = 10, B = 28;
   const pw = W - L - R, ph = H - T - B;
 
-  let maxVal = 1;
+  let maxVal = 4; // so an empty chart counts 0 1 2 3 4, not 0 0.5 1
   for (const b of buckets) maxVal = Math.max(maxVal, b.in, b.out);
   const step = niceStep(maxVal / 4);
   const top = step * 4;
@@ -1436,13 +1441,16 @@ function drawChart(container, buckets, names) {
   const n = buckets.length;
   const gw = pw / n;
   const bw = Math.max(2, Math.min(18, gw * 0.36));
+  // On a narrow screen, show every other date when they would run into each other
+  const labelGap = pw / Math.max(1, buckets.filter(b => b.label).length);
+  let labelCount = 0;
   buckets.forEach((b, i) => {
     const gx = L + i * gw + gw / 2;
     const hIn = Math.max(b.in, 0) / top * ph;
     const hOut = Math.max(b.out, 0) / top * ph;
     s += '<rect class="' + firstClass + '" x="' + (gx - bw - 1) + '" y="' + (T + ph - hIn) + '" width="' + bw + '" height="' + hIn + '" rx="2"><title>' + b.key + " " + first + ": " + money(b.in) + "</title></rect>";
     s += '<rect class="' + secondClass + '" x="' + (gx + 1) + '" y="' + (T + ph - hOut) + '" width="' + bw + '" height="' + hOut + '" rx="2"><title>' + b.key + " " + second + ": " + money(b.out) + "</title></rect>";
-    if (b.label) s += '<text class="axis" x="' + gx + '" y="' + (H - 8) + '" text-anchor="middle">' + b.label + "</text>";
+    if (b.label && (labelGap >= 32 || labelCount++ % 2 === 0)) s += '<text class="axis" x="' + gx + '" y="' + (H - 8) + '" text-anchor="middle">' + b.label + "</text>";
   });
 
   s += "</svg>";
