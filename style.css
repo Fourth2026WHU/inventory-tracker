@@ -307,3 +307,16 @@ label.last { margin-bottom: 0; }
   .insight-grid .span-two { grid-column: span 2; }
   #toast { bottom: 30px; }
 }
+
+/* Website orders: new ones stand out until someone opens them */
+.badge.new { background: var(--accent-text); color: #fff; margin-left: 6px; vertical-align: middle; }
+.badge.read { background: var(--card2); color: var(--muted); }
+.badge.packed { background: rgba(18, 128, 74, 0.12); color: var(--in); }
+.web-order-row > div { min-width: 0; overflow-wrap: anywhere; }
+.web-order-row.is-new { padding-left: 10px; border-left: 4px solid var(--accent-text); font-weight: 600; }
+.phone-link { display: inline-block; padding: 10px 0; font-size: 1.1rem; font-weight: bold; color: var(--accent-text); text-decoration: none; }
+.wo-note { white-space: pre-wrap; padding: 10px 12px; background: var(--card2); border-radius: 10px; }
+.wo-line > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.wo-line .right { flex: none; max-width: 45%; }
+.wo-line input { width: 120px; margin-top: 6px; margin-left: auto; text-align: right; }
+#wo-lines { margin-bottom: 8px; }

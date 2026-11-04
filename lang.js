@@ -261,7 +261,42 @@ const THAI = {
   "This record was not found.": "ไม่พบรายการนี้",
   "This record cannot be undone.": "ยกเลิกรายการนี้ไม่ได้",
   "This record was already undone.": "รายการนี้ถูกยกเลิกไปแล้ว",
-  "Order soon must be the same as or more than Order now.": "ค่าควรสั่งเร็ว ๆ นี้ต้องไม่น้อยกว่าค่าสั่งซื้อเลย"
+  "Order soon must be the same as or more than Order now.": "ค่าควรสั่งเร็ว ๆ นี้ต้องไม่น้อยกว่าค่าสั่งซื้อเลย",
+  "This order was not found.": "ไม่พบคำสั่งซื้อนี้",
+  "This order was already packed or cancelled.": "คำสั่งซื้อนี้ถูกจัดหรือยกเลิกไปแล้ว",
+  "This order has no products to pack.": "คำสั่งซื้อนี้ไม่มีสินค้าให้จัด",
+  "Pack this order before marking it as sent.": "กรุณากดจัดแล้วก่อน แล้วค่อยกดส่งแล้ว",
+  "This order can no longer be cancelled.": "คำสั่งซื้อนี้ยกเลิกไม่ได้แล้ว",
+  "No product has the code {code}. Add the code to the product in Stock first.": "ไม่มีสินค้าที่ใช้รหัส {code} กรุณาใส่รหัสนี้ให้สินค้าในหน้าสต็อกก่อน",
+  "Another product already has the code {code}.": "รหัส {code} ถูกใช้กับสินค้าอื่นแล้ว",
+
+  // Website orders
+  "Website orders": "คำสั่งซื้อจากเว็บไซต์",
+  "{n} new": "ใหม่ {n}",
+  "No website orders waiting.": "ยังไม่มีคำสั่งซื้อจากเว็บไซต์ที่รอจัดการ",
+  "{n} items": "{n} รายการ",
+  "Message only": "ข้อความอย่างเดียว",
+  "New": "ใหม่",
+  "Read": "อ่านแล้ว",
+  "Packed": "จัดแล้ว",
+  "Sent": "ส่งแล้ว",
+  "Order #{n}": "คำสั่งซื้อ #{n}",
+  "No product has this code": "ไม่มีสินค้าที่ใช้รหัสนี้",
+  "Stock now: {n} {unit}": "มีอยู่ {n} {unit}",
+  "Price (optional)": "ราคา (ถ้ามี)",
+  "Price per {unit} for {name}": "ราคาต่อ{unit} ของ {name}",
+  "This order is only a message. Reply to the customer, then cancel it here when done.": "คำสั่งซื้อนี้เป็นข้อความอย่างเดียว ตอบลูกค้าแล้ว กดยกเลิกที่นี่เมื่อเสร็จ",
+  "Add the website code to these products in Stock before packing.": "ใส่รหัสเว็บไซต์ให้สินค้าเหล่านี้ในหน้าสต็อกก่อน แล้วค่อยจัด",
+  "Packed takes these products out of stock.": "กดจัดแล้ว สต็อกของสินค้าเหล่านี้จะลดลง",
+  "Sent means the customer has the products.": "กดส่งแล้ว เมื่อลูกค้าได้รับสินค้าแล้ว",
+  "Mark order #{n} as sent?": "ยืนยันว่าส่งคำสั่งซื้อ #{n} แล้วใช่ไหม?",
+  "Take the products in order #{n} out of stock?": "ตัดสต็อกสินค้าในคำสั่งซื้อ #{n} ใช่ไหม?",
+  "Cancel order #{n}? Its products go back into stock.": "ยกเลิกคำสั่งซื้อ #{n} ใช่ไหม? สินค้าจะถูกคืนเข้าสต็อก",
+  "Cancel order #{n}?": "ยกเลิกคำสั่งซื้อ #{n} ใช่ไหม?",
+  "Order marked as sent": "บันทึกว่าส่งแล้ว",
+  "Order packed. Stock updated.": "จัดแล้ว ตัดสต็อกเรียบร้อย",
+  "New order from the website": "มีคำสั่งซื้อใหม่จากเว็บไซต์",
+  "Website code (optional)": "รหัสเว็บไซต์ (ถ้ามี)"
 };
 
 let language = "th";
@@ -278,6 +313,10 @@ function t(text, values) {
 function serverText(message) {
   const short = message.match(/^Not enough (.+)\. Only (\S+) (.+) left\.$/);
   if (short) return t("Not enough {name}. Only {n} {unit} left.", { name: short[1], n: short[2], unit: short[3] });
+  const noCode = message.match(/^No product has the code (.+)\. Add the code to the product in Stock first\.$/);
+  if (noCode) return t("No product has the code {code}. Add the code to the product in Stock first.", { code: noCode[1] });
+  const takenCode = message.match(/^Another product already has the code (.+)\.$/);
+  if (takenCode) return t("Another product already has the code {code}.", { code: takenCode[1] });
   return t(message);
 }
 

@@ -68,6 +68,11 @@
       </div>
 
       <div class="card">
+        <h2>Website orders <span class="badge new" id="web-orders-new"></span></h2>
+        <ul id="web-orders-list"></ul>
+      </div>
+
+      <div class="card">
         <h2>Today</h2>
         <div class="today">
           <div class="box in"><b id="total-in">0</b><small>Stock IN</small></div>
@@ -299,6 +304,9 @@
       <label>Name
         <input type="text" id="p-name" required>
       </label>
+      <label>Website code (optional)
+        <input type="text" id="p-code" maxlength="30" placeholder="TC-N001" autocapitalize="characters">
+      </label>
       <label>Kind
         <select id="p-kind">
           <option value="material">Material (we buy it)</option>
@@ -377,6 +385,21 @@
         <button type="submit" class="btn">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Pop-up for one order from the website: pack it, mark it sent, or cancel it -->
+  <dialog id="web-order-dialog">
+    <h2 id="wo-title"></h2>
+    <p class="muted" id="wo-customer"></p>
+    <p><a id="wo-phone" class="phone-link"></a></p>
+    <p class="wo-note" id="wo-note"></p>
+    <ul id="wo-lines"></ul>
+    <p class="muted" id="wo-hint"></p>
+    <div class="dialog-buttons">
+      <button type="button" id="wo-cancel" class="btn danger">Cancel order</button>
+      <button type="button" id="wo-back" class="btn ghost">Back</button>
+      <button type="button" id="wo-action" class="btn"></button>
+    </div>
   </dialog>
 
   <!-- Pop-up that asks the user to check a record before it is saved -->

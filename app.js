@@ -55,6 +55,12 @@ let confirmLines = [];      // the lines shown in the confirm pop-up
 let confirmSave = null;     // what the Confirm button in that pop-up saves
 let counted = {};           // what was typed on the Count stock page, by product id
 let saving = false;         // true while a save is on its way, so a double tap cannot save twice
+let webOrders = [];         // website orders that are new, read or packed
+let seenOrderIds = null;    // the new orders already shown, so only a newer one gets a message
+let openWebOrder = null;    // the order in the website order pop-up
+
+const WEB_ORDER_COLUMNS = "id,createdAt:created_at,name,company,phone,note,lines,status";
+const WEB_ORDER_STATUS = { new: "New", read: "Read", packed: "Packed" };
 
 // Get every row of a table a few pages at a time, oldest first
 async function fetchAllRows(table, columns) {
@@ -104,17 +110,21 @@ function addProfit(list) {
 
 // Get the latest data from the server
 async function loadData() {
-  const [items, totals, names] = await Promise.all([
-    db.from("products").select("id,name,kind,unit,stock,min:min_stock").order("id"),
+  const [items, totals, names, orders] = await Promise.all([
+    db.from("products").select("id,name,kind,unit,stock,min:min_stock,code").order("id"),
     db.rpc("today_totals"),
-    db.from("contacts").select("kind,name").order("name")
+    db.from("contacts").select("kind,name").order("name"),
+    db.from("web_orders").select(WEB_ORDER_COLUMNS).in("status", ["new", "read", "packed"]).order("id", { ascending: false })
   ]);
   if (items.error) throw items.error;
   if (totals.error) throw totals.error;
   if (names.error) throw names.error;
+  if (orders.error) throw orders.error;
   products = items.data;
   todayTotals = totals.data;
   contacts = names.data;
+  webOrders = orders.data;
+  noticeNewOrders();
 
   if (isFull()) {
     const { data: levels, error: levelsError } = await db.from("app_settings").select("order_now_days,order_soon_days,last_backup_at").maybeSingle();
@@ -248,6 +258,8 @@ function endSession() {
   counted = {};
   openOrders = [];
   recipes = [];
+  webOrders = [];
+  seenOrderIds = null;
   todayTotals = { in: 0, out: 0 };
   document.body.classList.add("logged-out");
   document.getElementById("login-user").value = "";
@@ -317,6 +329,8 @@ function renderHome() {
   document.getElementById("stat-low").classList.toggle("low", low > 0);
   document.getElementById("stat-out").classList.toggle("minus", out > 0);
 
+  renderWebOrders();
+
   // Today's totals
   document.getElementById("total-in").textContent = todayTotals.in;
   document.getElementById("total-out").textContent = todayTotals.out;
@@ -348,6 +362,158 @@ function renderHome() {
   if (movements.length === 0) recent.appendChild(el("li", "empty", t("Nothing recorded yet.")));
   for (const m of movements.slice(-8).reverse()) recent.appendChild(makeMoveRow(m));
 }
+
+// ---------- orders from the website ----------
+
+function findByCode(code) {
+  return products.find(p => p.code && p.code.toUpperCase() === code.toUpperCase());
+}
+
+// The newest selling price of a product, from this customer if they bought it before
+function lastSalePrice(productId, customer) {
+  let newest = null;
+  for (let i = movements.length - 1; i >= 0; i--) {
+    const m = movements[i];
+    if (m.type !== "OUT" || m.productId !== productId || m.unitPrice === null) continue;
+    if (m.contact.toLowerCase() === customer.toLowerCase()) return m.unitPrice;
+    if (newest === null) newest = m.unitPrice;
+  }
+  return newest;
+}
+
+// A message when an order arrives while the app is open
+function noticeNewOrders() {
+  const ids = webOrders.filter(o => o.status === "new").map(o => o.id);
+  if (seenOrderIds && ids.some(id => !seenOrderIds.has(id))) toast(t("New order from the website"));
+  seenOrderIds = new Set(ids);
+}
+
+function orderTime(o) {
+  const d = new Date(o.createdAt);
+  return longDate(d) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+// New orders first, then read, then packed. Newest first in each.
+function renderWebOrders() {
+  const order = ["new", "read", "packed"];
+  const shown = [...webOrders].sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || b.id - a.id);
+  const fresh = webOrders.filter(o => o.status === "new").length;
+  const badge = document.getElementById("web-orders-new");
+  badge.textContent = fresh ? t("{n} new", { n: fresh }) : "";
+  badge.style.display = fresh ? "" : "none";
+
+  const list = document.getElementById("web-orders-list");
+  list.innerHTML = "";
+  if (shown.length === 0) list.appendChild(el("li", "empty", t("No website orders waiting.")));
+  for (const o of shown) {
+    const li = el("li", "clickable web-order-row" + (o.status === "new" ? " is-new" : ""));
+    const left = el("div");
+    left.appendChild(el("div", "", "#" + o.id + " " + (o.company || o.name)));
+    const count = o.lines.length ? t("{n} items", { n: o.lines.length }) : t("Message only");
+    left.appendChild(el("div", "small", orderTime(o) + " · " + count));
+    li.appendChild(left);
+    li.appendChild(el("span", "badge " + o.status, t(WEB_ORDER_STATUS[o.status])));
+    li.addEventListener("click", () => openWebOrderDialog(o));
+    list.appendChild(li);
+  }
+}
+
+function openWebOrderDialog(o) {
+  openWebOrder = o;
+  document.getElementById("wo-title").textContent = t("Order #{n}", { n: o.id }) + " · " + t(WEB_ORDER_STATUS[o.status]);
+  document.getElementById("wo-customer").textContent = [o.name, o.company, orderTime(o)].filter(Boolean).join(" · ");
+  const phone = document.getElementById("wo-phone");
+  phone.textContent = "📞 " + o.phone;
+  phone.href = "tel:" + o.phone;
+  const note = document.getElementById("wo-note");
+  note.textContent = o.note;
+  note.style.display = o.note ? "" : "none";
+
+  // Each product, the stock there is now, and a price box for full accounts before packing
+  const packing = o.status !== "packed";
+  const list = document.getElementById("wo-lines");
+  list.innerHTML = "";
+  let missing = 0;
+  for (const line of o.lines) {
+    const p = findByCode(line.code);
+    const li = el("li", "wo-line");
+    const left = el("div");
+    left.appendChild(el("div", "", line.name));
+    let info = line.code;
+    if (!p) { info += " · " + t("No product has this code"); missing++; }
+    else if (packing) info += " · " + t("Stock now: {n} {unit}", { n: p.stock, unit: p.unit });
+    const small = el("div", "small" + (p ? "" : " minus"), info);
+    left.appendChild(small);
+    li.appendChild(left);
+
+    const right = el("div", "right");
+    const short = p && packing && p.stock < line.qty;
+    right.appendChild(el("div", "qty" + (short ? " minus" : ""), line.qty + " " + (line.unit || (p ? p.unit : ""))));
+    if (packing && isFull() && p) {
+      const price = el("input");
+      price.type = "number";
+      price.min = "0";
+      price.step = "any";
+      price.inputMode = "decimal";
+      price.placeholder = t("Price (optional)");
+      price.dataset.code = line.code;
+      price.setAttribute("aria-label", t("Price per {unit} for {name}", { unit: p.unit, name: line.name }));
+      const last = lastSalePrice(p.id, o.company || o.name);
+      if (last !== null) price.value = last;
+      right.appendChild(price);
+    }
+    li.appendChild(right);
+    list.appendChild(li);
+  }
+
+  const action = document.getElementById("wo-action");
+  const hint = document.getElementById("wo-hint");
+  action.style.display = o.lines.length ? "" : "none";
+  action.textContent = packing ? t("Packed") : t("Sent");
+  action.disabled = packing && missing > 0;
+  hint.textContent = !o.lines.length ? t("This order is only a message. Reply to the customer, then cancel it here when done.")
+    : packing && missing ? t("Add the website code to these products in Stock before packing.")
+    : packing ? t("Packed takes these products out of stock.")
+    : t("Sent means the customer has the products.");
+  document.getElementById("web-order-dialog").showModal();
+
+  // Opening a new order marks it as read for everyone
+  if (o.status === "new") {
+    o.status = "read";
+    db.rpc("set_web_order_status", { p_id: o.id, p_status: "read" }).then(() => renderWebOrders());
+  }
+}
+
+document.getElementById("wo-back").addEventListener("click", () => document.getElementById("web-order-dialog").close());
+
+document.getElementById("wo-action").addEventListener("click", async () => {
+  const o = openWebOrder;
+  if (saving || !o) return;
+  let saved;
+  if (o.status === "packed") {
+    if (!confirm(t("Mark order #{n} as sent?", { n: o.id }))) return;
+    saved = await saveToServer("set_web_order_status", { p_id: o.id, p_status: "shipped" }, t("Order marked as sent"));
+  } else {
+    if (!confirm(t("Take the products in order #{n} out of stock?", { n: o.id }))) return;
+    const prices = {};
+    document.querySelectorAll("#wo-lines input[data-code]").forEach(box => {
+      if (box.value !== "") prices[box.dataset.code] = Number(box.value);
+    });
+    saved = await saveToServer("pack_web_order", { p_id: o.id, p_prices: prices }, t("Order packed. Stock updated."));
+  }
+  if (saved) document.getElementById("web-order-dialog").close();
+});
+
+document.getElementById("wo-cancel").addEventListener("click", async () => {
+  const o = openWebOrder;
+  if (saving || !o) return;
+  const question = o.status === "packed"
+    ? t("Cancel order #{n}? Its products go back into stock.", { n: o.id })
+    : t("Cancel order #{n}?", { n: o.id });
+  if (!confirm(question)) return;
+  const saved = await saveToServer("set_web_order_status", { p_id: o.id, p_status: "cancelled" }, t("Order cancelled"));
+  if (saved) document.getElementById("web-order-dialog").close();
+});
 
 // One line in the recent activity list
 function makeMoveRow(m) {
@@ -388,7 +554,8 @@ function renderStock() {
 
     const left = el("div");
     left.appendChild(el("div", "", p.name));
-    left.appendChild(el("div", "small", t("{kind} · warn below {min}", { kind: t(p.kind === "material" ? "Material" : "Finished product"), min: p.min })));
+    const kindText = t("{kind} · warn below {min}", { kind: t(p.kind === "material" ? "Material" : "Finished product"), min: p.min });
+    left.appendChild(el("div", "small", (p.code ? p.code + " · " : "") + kindText));
 
     const right = el("div", "right");
     right.appendChild(el("div", "qty", p.stock + " " + p.unit));
@@ -648,6 +815,7 @@ function openProductDialog(id) {
 
   document.getElementById("dialog-title").textContent = p ? t("Edit product") : t("Add product");
   document.getElementById("p-name").value = p ? p.name : "";
+  document.getElementById("p-code").value = p && p.code ? p.code : "";
   document.getElementById("p-kind").value = p ? p.kind : "material";
   document.getElementById("p-unit").value = p ? p.unit : "pcs";
   document.getElementById("p-stock").value = p ? p.stock : 0;
@@ -677,7 +845,8 @@ document.getElementById("product-form").addEventListener("submit", async functio
     p_kind: document.getElementById("p-kind").value,
     p_unit: document.getElementById("p-unit").value.trim(),
     p_stock: Number(document.getElementById("p-stock").value),
-    p_min: Number(document.getElementById("p-min").value)
+    p_min: Number(document.getElementById("p-min").value),
+    p_code: document.getElementById("p-code").value.trim()
   }, t("Saved"));
   if (saved) document.getElementById("product-dialog").close();
 });
