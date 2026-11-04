@@ -134,6 +134,12 @@ li.clickable { cursor: pointer; }
 .stock-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
 .stock-row .right { flex: none; max-width: 55%; }
 .stock-row .qty { font-size: 1.3rem; }
+.stock-group { padding: 16px 0 8px; font-weight: bold; color: var(--accent-text); }
+.stock-group:first-child { padding-top: 4px; }
+.code-tag {
+  display: inline-block; margin-bottom: 3px; padding: 1px 7px; border-radius: 6px;
+  background: var(--card2); color: var(--text); font-size: 0.8rem; font-weight: 600;
+}
 .head-buttons { display: flex; gap: 8px; }
 .count-row input { width: 96px; margin: 0; text-align: right; }
 .count-row .diff { min-height: 1.4em; margin-top: 4px; font-size: 0.9rem; font-weight: bold; }
