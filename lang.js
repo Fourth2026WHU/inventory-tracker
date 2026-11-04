@@ -45,6 +45,10 @@ const THAI = {
   // Stock
   "+ Add product": "+ เพิ่มสินค้า",
   "Search products": "ค้นหาสินค้า",
+  "Notebooks": "สมุด",
+  "Bills": "บิล",
+  "Envelopes": "ซอง",
+  "Other": "อื่น ๆ",
   "Tap a product to edit, correct its stock, or delete it.": "แตะสินค้าเพื่อแก้ไข ปรับสต็อก หรือลบ",
   "No product matches your search.": "ไม่พบสินค้าที่ค้นหา",
   "No products yet. Tap + Add product.": "ยังไม่มีสินค้า แตะ + เพิ่มสินค้า",

@@ -536,26 +536,58 @@ function makeMoveRow(m) {
 // 4. STOCK PAGE (list, add, edit, delete)
 // =====================================================
 
+// The website code says the category: TC-N is a notebook, TC-B and TC-C are bills,
+// TC-L is an envelope. Everything else, materials too, goes under Other.
+const STOCK_GROUPS = [["notebooks", "Notebooks"], ["bills", "Bills"], ["envelopes", "Envelopes"], ["other", "Other"]];
+let stockGroupShown = "all";
+
+function stockGroup(p) {
+  const code = (p.code || "").toUpperCase();
+  if (code.startsWith("TC-N")) return "notebooks";
+  if (code.startsWith("TC-B") || code.startsWith("TC-C")) return "bills";
+  if (code.startsWith("TC-L")) return "envelopes";
+  return "other";
+}
+
 function renderStock() {
   const list = document.getElementById("stock-list");
   list.innerHTML = "";
   const search = document.getElementById("stock-search").value.trim().toLowerCase();
-  const shown = products.filter(p => p.name.toLowerCase().includes(search));
+  const shown = products.filter(p => (p.name.toLowerCase().includes(search) || (p.code || "").toLowerCase().includes(search))
+    && (stockGroupShown === "all" || stockGroup(p) === stockGroupShown));
 
   if (shown.length === 0) {
     list.appendChild(el("li", "empty", products.length ? t("No product matches your search.") : t("No products yet. Tap + Add product.")));
     return;
   }
 
-  for (const p of shown) {
+  // Each category under its own heading, in code order
+  const ordered = [];
+  for (const [key, label] of STOCK_GROUPS) {
+    const items = shown.filter(p => stockGroup(p) === key)
+      .sort((a, b) => (a.code || "~").localeCompare(b.code || "~") || a.name.localeCompare(b.name));
+    if (!items.length) continue;
+    if (stockGroupShown === "all") ordered.push({ heading: label, count: items.length });
+    ordered.push(...items);
+  }
+
+  for (const p of ordered) {
+    if (p.heading) {
+      const head = el("li", "stock-group");
+      head.appendChild(el("span", "", t(p.heading)));
+      head.appendChild(el("span", "small", t("{n} items", { n: p.count })));
+      list.appendChild(head);
+      continue;
+    }
     // Only products that need attention get a colour and a label
     const state = p.stock <= 0 ? "out" : p.stock < p.min ? "low" : "";
     const li = el("li", "stock-row" + (state ? " need-" + state : "") + (isFull() ? " clickable" : ""));
 
     const left = el("div");
+    if (p.code) left.appendChild(el("div", "code-tag", p.code));
     left.appendChild(el("div", "", p.name));
     const kindText = t("{kind} · warn below {min}", { kind: t(p.kind === "material" ? "Material" : "Finished product"), min: p.min });
-    left.appendChild(el("div", "small", (p.code ? p.code + " · " : "") + kindText));
+    left.appendChild(el("div", "small", kindText));
 
     const right = el("div", "right");
     right.appendChild(el("div", "qty", p.stock + " " + p.unit));
@@ -831,6 +863,13 @@ function openProductDialog(id) {
 
 document.getElementById("add-product-btn").addEventListener("click", () => openProductDialog(null));
 document.getElementById("stock-search").addEventListener("input", renderStock);
+document.querySelectorAll("#stock-groups button").forEach(b => {
+  b.addEventListener("click", () => {
+    stockGroupShown = b.dataset.group;
+    document.querySelectorAll("#stock-groups button").forEach(x => x.classList.toggle("active", x === b));
+    renderStock();
+  });
+});
 document.getElementById("p-cancel").addEventListener("click", () => document.getElementById("product-dialog").close());
 
 // Save (add or edit)
