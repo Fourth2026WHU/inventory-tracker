@@ -15,6 +15,8 @@
   --out: #d6203a;
   --ok: #12804a;
   --warn: #a35f00;
+  --warn-soft: #fbf1e3;
+  --out-soft: #fdecee;
   --bad: #d6203a;
 }
 
@@ -50,8 +52,13 @@ h2 { font-size: 1.05rem; margin: 0 0 12px; }
 /* Number boxes */
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
 .stat { background: var(--card); border-radius: 14px; padding: 14px 6px; text-align: center; box-shadow: var(--shadow); }
-.stat b { display: block; font-size: 1.5rem; }
-.stat small { color: var(--muted); }
+.stat b { display: block; font-size: 1.5rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+/* Home numbers are the ones a parent acts on, so they are the largest. */
+#stat-total, #stat-low, #stat-out { font-size: 2rem; }
+.stat small { display: block; margin-top: 2px; color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
+/* A box with stock to act on takes the colour of its warning, so it stands out. */
+.stat:has(b.low) { background: var(--warn-soft); }
+.stat:has(b.minus) { background: var(--out-soft); }
 .stat small.change { display: block; margin-top: 4px; font-size: 0.72rem; font-weight: 600; }
 .stat small.change.ok { color: var(--ok); }
 .stat small.change.minus { color: var(--out); }
